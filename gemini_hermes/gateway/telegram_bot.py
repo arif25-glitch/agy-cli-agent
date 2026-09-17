@@ -41,6 +41,8 @@ class TelegramBot:
         self.last_update_id = 0
         self.bot_info: Dict[str, Any] = {}
         self._active_tasks: Dict[int, asyncio.Task] = {}
+        self._active_task_info: Dict[int, Dict[str, Any]] = {}
+        self._task_queues: Dict[int, List[str]] = {}
 
     async def _api_call(self, method: str, json_data: Optional[Dict[str, Any]] = None, timeout: float = 35.0) -> Any:
         if not self.client or self.client.is_closed:
@@ -191,6 +193,9 @@ class TelegramBot:
             f"• `/memory_reset` - Resets persistent memory to default initial state.\n"
             f"• `/skills` - Lists all modular procedural skills currently registered.\n"
             f"• `/skill <name>` - Displays the exact instructions and metadata of a skill.\n"
+            f"• `/btw <note/query>` - Ask a side question, steer, or queue a task while an operation is running.\n"
+            f"• `/queue` - View active task and pending /btw queue.\n"
+            f"• `/cancel` - Abort the active background task and clear the queue.\n"
             f"• `/exec <command>` - Runs a shell command on the host machine and streams the output.\n"
             f"• `/help` - Displays this menu.\n\n"
             f"💬 *Natural Conversation:*\n"
@@ -285,10 +290,119 @@ class TelegramBot:
         else:
             await self.send_message(chat_id, result)
 
+    async def handle_btw(self, chat_id: int, user_id: int, text: str):
+        query = text.strip()
+        if not query:
+            await self.send_message(
+                chat_id,
+                "ℹ️ *Usage of `/btw`:*\n"
+                "• *Side quest / live status:* `/btw where are you now?`\n"
+                "• *Steer active task:* `/btw remember to use Tailwind and SQLite`\n"
+                "• *Queue next task:* `/btw after this, write a comprehensive README.md`",
+            )
+            return
+
+        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
+
+        if not is_running:
+            # No task currently running - execute directly as a chat message
+            await self.send_message(chat_id, f"💡 *Executing `/btw` directly:* `{query}`")
+            task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, query))
+            self._active_tasks[chat_id] = task
+            return
+
+        # An active task is currently running in background
+        info = self._active_task_info.get(chat_id, {})
+        last_action = info.get("last_action", "Executing operation...")
+        start_time = info.get("start_time", time.time())
+        elapsed = int(time.time() - start_time)
+        task_prompt = info.get("text", "")
+        task_preview = task_prompt.splitlines()[0] if task_prompt else "Ongoing operation"
+        if len(task_preview) > 75:
+            task_preview = task_preview[:72] + "..."
+
+        query_lower = query.lower()
+        status_keywords = [
+            "where are you", "what are you", "what are u", "where r u",
+            "progress", "status", "how is", "how's", "sedang apa",
+            "lagi apa", "sampai mana", "current step", "doing",
+            "working on", "update", "how far", "is it done"
+        ]
+        is_inquiry = any(k in query_lower for k in status_keywords) or (
+            query.endswith("?") and any(w in query_lower for w in ["now", "current", "step", "you", "task", "job", "doing"])
+        )
+
+        if is_inquiry:
+            # Side Quest: Real-time telemetry response without stopping the primary background task
+            status_text = (
+                f"💬 *Side Query (Live Task Telemetry):*\n\n"
+                f"• *Primary Task:* `{task_preview}`\n"
+                f"• *Current Step:* {last_action}\n"
+                f"• *Elapsed Time:* `{elapsed}s`\n"
+                f"• *Status:* ⚙️ Actively executing in background\n\n"
+                f"_The primary task continues uninterrupted._"
+            )
+            await self.send_message(chat_id, status_text)
+            return
+
+        # Steering directive or Queued Task
+        if chat_id not in self._task_queues:
+            self._task_queues[chat_id] = []
+        self._task_queues[chat_id].append(query)
+        q_pos = len(self._task_queues[chat_id])
+
+        reply_text = (
+            f"📥 *Received Side Note / Task (/btw):*\n"
+            f"`{query}`\n\n"
+            f"• *Primary Task:* Continues in background ({last_action})\n"
+            f"• *Action:* Queued at position `#{q_pos}`\n"
+            f"• *Execution:* I will evaluate and execute this steering instruction immediately once the active operation completes!"
+        )
+        await self.send_message(chat_id, reply_text)
+
+    async def handle_queue(self, chat_id: int):
+        q = self._task_queues.get(chat_id, [])
+        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
+        if not is_running and not q:
+            await self.send_message(chat_id, "📭 Task queue is empty. No tasks are running.")
+            return
+
+        lines = ["📋 *Task Queue Status:*\n"]
+        if is_running:
+            info = self._active_task_info.get(chat_id, {})
+            last_act = info.get("last_action", "Running...")
+            lines.append(f"• *[ACTIVE]* Currently: `{last_act}`\n")
+        if q:
+            lines.append("*Queued /btw items:*")
+            for i, item in enumerate(q, 1):
+                preview = item if len(item) <= 70 else item[:67] + "..."
+                lines.append(f"  {i}. `{preview}`")
+        else:
+            lines.append("• No pending queued items.")
+
+        await self.send_message(chat_id, "\n".join(lines))
+
+    async def _run_queued_task(self, chat_id: int, user_id: int, text: str):
+        await asyncio.sleep(0.5)
+        await self.send_message(
+            chat_id,
+            f"⚡ *Starting queued /btw instruction:*\n`{text}`",
+        )
+        task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, text))
+        self._active_tasks[chat_id] = task
+
     async def handle_chat_message(self, chat_id: int, user_id: int, user_text: str):
         curr_task = asyncio.current_task()
         if curr_task:
             self._active_tasks[chat_id] = curr_task
+
+        self._active_task_info[chat_id] = {
+            "text": user_text,
+            "start_time": time.time(),
+            "last_action": "Thinking and planning...",
+            "status_count": 0,
+            "user_id": user_id,
+        }
 
         sess = self.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
@@ -347,6 +461,9 @@ class TelegramBot:
 
                 elif isinstance(event, ToolExecutionUpdate):
                     last_active_action = event.action
+                    if chat_id in self._active_task_info:
+                        self._active_task_info[chat_id]["last_action"] = event.action
+                        self._active_task_info[chat_id]["status_count"] += 1
                     now = time.time()
                     interval = getattr(config, "status_notify_interval", 1.2)
                     if event.action != last_status_action and (now - last_status_time >= interval):
@@ -429,6 +546,13 @@ class TelegramBot:
             if not typing_task.done():
                 typing_task.cancel()
             self._active_tasks.pop(chat_id, None)
+            self._active_task_info.pop(chat_id, None)
+
+            # Check if there is a queued /btw task
+            if chat_id in self._task_queues and self._task_queues[chat_id]:
+                next_task_text = self._task_queues[chat_id].pop(0)
+                logger.info(f"Triggering next queued task for chat_id={chat_id}: {next_task_text[:50]}")
+                asyncio.create_task(self._run_queued_task(chat_id, user_id, next_task_text))
 
     async def process_update(self, update: Dict[str, Any]):
         msg = update.get("message") or update.get("edited_message")
@@ -459,7 +583,11 @@ class TelegramBot:
             await self.send_message(
                 chat_id,
                 "⏳ *Still processing...*\n\n"
-                "I am currently working on your previous request or document. Please give me a moment to finish, or type `/reset` to cancel it and start fresh."
+                "I am currently working on your previous request. You can:\n"
+                "• Ask a side question, steer, or queue a task with `/btw <message>`\n"
+                "• Check live status with `/status`\n"
+                "• View task queue with `/queue`\n"
+                "• Type `/cancel` to abort or `/reset` to start fresh."
             )
             return
 
@@ -542,11 +670,30 @@ class TelegramBot:
                 if chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
                     self._active_tasks[chat_id].cancel()
                     self._active_tasks.pop(chat_id, None)
+                self._task_queues.pop(chat_id, None)
+                self._active_task_info.pop(chat_id, None)
                 self.memory_store.reset_session(chat_id)
                 await self.send_message(
                     chat_id,
                     "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",
                 )
+            elif cmd == "/btw":
+                await self.handle_btw(chat_id, user_id, arg)
+            elif cmd == "/queue":
+                await self.handle_queue(chat_id)
+            elif cmd == "/cancel":
+                cancelled = False
+                if chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
+                    self._active_tasks[chat_id].cancel()
+                    self._active_tasks.pop(chat_id, None)
+                    cancelled = True
+                self._active_task_info.pop(chat_id, None)
+                q_count = len(self._task_queues.get(chat_id, []))
+                self._task_queues.pop(chat_id, None)
+                if cancelled or q_count:
+                    await self.send_message(chat_id, f"🛑 Ongoing task cancelled and {q_count} queued item(s) cleared.")
+                else:
+                    await self.send_message(chat_id, "ℹ️ No running task or queued items to cancel.")
             elif cmd == "/status":
                 await self.handle_status(chat_id)
             elif cmd == "/memory":
