@@ -70,6 +70,7 @@ class TelegramBot:
                 self.client = httpx.AsyncClient(timeout=60.0)
             resp = await self.client.get(file_url, timeout=60.0)
             if resp.status_code == 200:
+                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
                 with open(dest_path, "wb") as f:
                     f.write(resp.content)
                 return True
