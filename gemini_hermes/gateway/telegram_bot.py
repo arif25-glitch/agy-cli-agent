@@ -89,10 +89,10 @@ class TelegramBot:
     async def send_message(
         self, chat_id: int, text: str, parse_mode: Optional[str] = "Markdown"
     ) -> Optional[int]:
-        res = await self._api_call(
-            "sendMessage",
-            {"chat_id": chat_id, "text": text, "parse_mode": parse_mode},
-        )
+        payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        res = await self._api_call("sendMessage", payload)
         if not res.get("ok") and parse_mode:
             # Fallback without markdown parsing if syntax error occurs
             res = await self._api_call(
@@ -113,15 +113,14 @@ class TelegramBot:
     async def edit_message_text(
         self, chat_id: int, message_id: int, text: str, parse_mode: Optional[str] = "Markdown"
     ) -> bool:
-        res = await self._api_call(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "parse_mode": parse_mode,
-            },
-        )
+        payload: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        res = await self._api_call("editMessageText", payload)
         if not res.get("ok"):
             desc = res.get("description", "")
             if "message is not modified" in desc:
