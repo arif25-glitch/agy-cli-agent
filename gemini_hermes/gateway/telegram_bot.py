@@ -1,3 +1,4 @@
+import os
 import asyncio
 import logging
 import time
@@ -28,6 +29,8 @@ class TelegramBot:
         self.memory_store = memory_store or MemoryStore()
         self.skill_manager = skill_manager or SkillManager()
         self.forwarder = forwarder or AgyForwarder()
+        self.media_dir = os.path.join(config.workspace_dir, "data", "media")
+        os.makedirs(self.media_dir, exist_ok=True)
         self.client: Optional[httpx.AsyncClient] = None
         self.is_running = False
         self.last_update_id = 0
@@ -53,6 +56,28 @@ class TelegramBot:
             self.bot_info = res.get("result", {})
             return self.bot_info
         return {}
+
+    async def get_file_path(self, file_id: str) -> Optional[str]:
+        res = await self._api_call("getFile", {"file_id": file_id})
+        if res.get("ok"):
+            return res["result"].get("file_path")
+        return None
+
+    async def download_file_to(self, file_path: str, dest_path: str) -> bool:
+        file_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
+        try:
+            if not self.client or self.client.is_closed:
+                self.client = httpx.AsyncClient(timeout=60.0)
+            resp = await self.client.get(file_url, timeout=60.0)
+            if resp.status_code == 200:
+                with open(dest_path, "wb") as f:
+                    f.write(resp.content)
+                return True
+            else:
+                logger.error(f"Download failed for {file_path}: status {resp.status_code}")
+        except Exception as e:
+            logger.error(f"Error downloading file {file_path}: {e}")
+        return False
 
     async def send_message(
         self, chat_id: int, text: str, parse_mode: Optional[str] = "Markdown"
@@ -342,6 +367,9 @@ class TelegramBot:
         from_user = msg.get("from", {})
         user_id = from_user.get("id")
         text = msg.get("text", "")
+        photo = msg.get("photo")
+        doc = msg.get("document")
+        caption = msg.get("caption", "").strip()
 
         if not chat_id or not user_id:
             return
@@ -352,9 +380,67 @@ class TelegramBot:
             await self.handle_unauthorized(chat_id, user_id)
             return
 
+        # Handle photos / images
+        if photo:
+            await self.send_chat_action(chat_id, "upload_photo")
+            highest_photo = photo[-1]
+            file_id = highest_photo.get("file_id")
+            tg_file_path = await self.get_file_path(file_id) if file_id else None
+
+            if tg_file_path:
+                ext = os.path.splitext(tg_file_path)[1] or ".jpg"
+                filename = f"photo_{chat_id}_{int(time.time())}_{file_id[:8]}{ext}"
+                local_path = os.path.join(self.media_dir, filename)
+                downloaded = await self.download_file_to(tg_file_path, local_path)
+                if downloaded:
+                    user_prompt = (
+                        f"[Attached User Image: {local_path}]\n"
+                        f"Caption / Question: {caption or 'Please inspect and analyze this image in detail.'}\n\n"
+                        f"System Instruction: The user has attached an image in Telegram, saved on disk at '{local_path}'. "
+                        f"You MUST use your `view_file` tool to inspect this image file and see its visual contents, "
+                        f"then provide your detailed analysis or answer to the user's caption."
+                    )
+                    await self.handle_chat_message(chat_id, user_id, user_prompt)
+                    return
+                else:
+                    await self.send_message(chat_id, "⚠️ Failed to download the attached image. Please try again.")
+                    return
+            else:
+                await self.send_message(chat_id, "⚠️ Could not retrieve image metadata from Telegram.")
+                return
+
+        # Handle documents (e.g. image files or documents sent uncompressed)
+        if doc:
+            doc_mime = doc.get("mime_type", "")
+            file_name = doc.get("file_name", f"doc_{int(time.time())}")
+            file_id = doc.get("file_id")
+            tg_file_path = await self.get_file_path(file_id) if file_id else None
+
+            if tg_file_path:
+                local_path = os.path.join(self.media_dir, f"{int(time.time())}_{file_name}")
+                downloaded = await self.download_file_to(tg_file_path, local_path)
+                if downloaded:
+                    is_image = doc_mime.startswith("image/") or file_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))
+                    instruction = (
+                        f"Use your `view_file` tool to view and visually analyze this image."
+                        if is_image
+                        else f"Use your file inspection tools to examine and analyze this file."
+                    )
+                    user_prompt = (
+                        f"[Attached User File: {local_path}]\n"
+                        f"File Name: {file_name} (MIME: {doc_mime})\n"
+                        f"Caption / Question: {caption or f'Please inspect the attached file {file_name}.'}\n\n"
+                        f"System Instruction: The user has attached a file in Telegram, saved on disk at '{local_path}'. "
+                        f"{instruction} Then respond directly to the user."
+                    )
+                    await self.handle_chat_message(chat_id, user_id, user_prompt)
+                    return
+                else:
+                    await self.send_message(chat_id, "⚠️ Failed to download the attached file. Please try again.")
+                    return
+
         if not text:
-            # Maybe media / voice / doc
-            await self.send_message(chat_id, "ℹ️ Please send text queries or commands.")
+            await self.send_message(chat_id, "ℹ️ Please send text queries, commands, images, or documents.")
             return
 
         text = text.strip()
