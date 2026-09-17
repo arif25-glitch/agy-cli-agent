@@ -52,7 +52,13 @@ class Config(BaseModel):
         default_factory=lambda: os.environ.get("DANGEROUSLY_SKIP_PERMISSIONS", "true").lower() in ("true", "1", "yes")
     )
     forwarder_timeout: float = Field(
-        default_factory=lambda: float(os.environ.get("FORWARDER_TIMEOUT", "150.0"))
+        default_factory=lambda: float(os.environ.get("FORWARDER_TIMEOUT", "900.0"))
+    )
+    inactivity_timeout: float = Field(
+        default_factory=lambda: float(os.environ.get("INACTIVITY_TIMEOUT", "300.0"))
+    )
+    status_notify_interval: float = Field(
+        default_factory=lambda: float(os.environ.get("STATUS_NOTIFY_INTERVAL", "1.2"))
     )
 
     @property

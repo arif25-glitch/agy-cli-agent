@@ -89,10 +89,10 @@ class TelegramBot:
     async def send_message(
         self, chat_id: int, text: str, parse_mode: Optional[str] = "Markdown"
     ) -> Optional[int]:
-        res = await self._api_call(
-            "sendMessage",
-            {"chat_id": chat_id, "text": text, "parse_mode": parse_mode},
-        )
+        payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        res = await self._api_call("sendMessage", payload)
         if not res.get("ok") and parse_mode:
             # Fallback without markdown parsing if syntax error occurs
             res = await self._api_call(
@@ -103,28 +103,41 @@ class TelegramBot:
             return res["result"]["message_id"]
         return None
 
+    async def delete_message(self, chat_id: int, message_id: int) -> bool:
+        res = await self._api_call(
+            "deleteMessage",
+            {"chat_id": chat_id, "message_id": message_id},
+        )
+        return bool(res.get("ok"))
+
     async def edit_message_text(
         self, chat_id: int, message_id: int, text: str, parse_mode: Optional[str] = "Markdown"
     ) -> bool:
-        res = await self._api_call(
-            "editMessageText",
-            {
-                "chat_id": chat_id,
-                "message_id": message_id,
-                "text": text,
-                "parse_mode": parse_mode,
-            },
-        )
-        if not res.get("ok") and parse_mode:
-            # Fallback without markdown
-            res = await self._api_call(
-                "editMessageText",
-                {
-                    "chat_id": chat_id,
-                    "message_id": message_id,
-                    "text": text,
-                },
-            )
+        payload: Dict[str, Any] = {
+            "chat_id": chat_id,
+            "message_id": message_id,
+            "text": text,
+        }
+        if parse_mode:
+            payload["parse_mode"] = parse_mode
+        res = await self._api_call("editMessageText", payload)
+        if not res.get("ok"):
+            desc = res.get("description", "")
+            if "message is not modified" in desc:
+                return True
+            if parse_mode:
+                # Fallback without markdown
+                fallback_res = await self._api_call(
+                    "editMessageText",
+                    {
+                        "chat_id": chat_id,
+                        "message_id": message_id,
+                        "text": text,
+                    },
+                )
+                if not fallback_res.get("ok") and "message is not modified" in fallback_res.get("description", ""):
+                    return True
+                return bool(fallback_res.get("ok"))
         return bool(res.get("ok"))
 
     async def send_chat_action(self, chat_id: int, action: str = "typing"):
@@ -290,12 +303,29 @@ class TelegramBot:
 
         await self.send_chat_action(chat_id, "typing")
 
+        stop_typing = asyncio.Event()
+        async def _typing_heartbeat():
+            while not stop_typing.is_set():
+                try:
+                    await self.send_chat_action(chat_id, "typing")
+                    await asyncio.wait_for(stop_typing.wait(), timeout=4.5)
+                except asyncio.TimeoutError:
+                    pass
+                except Exception:
+                    break
+
+        typing_task = asyncio.create_task(_typing_heartbeat())
+
         placeholder_id: Optional[int] = None
         if config.stream_updates:
             placeholder_id = await self.send_message(chat_id, "💭 *Gemini-Hermes is thinking...*")
 
         accumulated_text = ""
         last_edit_time = time.time()
+        last_status_time = 0.0
+        last_status_action = ""
+        status_messages_sent = 0
+        last_active_action = ""
         final_result: Optional[ForwarderResult] = None
 
         try:
@@ -310,17 +340,31 @@ class TelegramBot:
                         and len(accumulated_text.strip()) > 0
                     ):
                         last_edit_time = now
-                        await self.send_chat_action(chat_id, "typing")
-                        # Format text with cursor and clean streaming markdown
                         formatted_preview = format_hermes_output(accumulated_text)
                         preview = sanitize_streaming_markdown(formatted_preview) + " ▌"
                         if len(preview) <= 4000:
                             await self.edit_message_text(chat_id, placeholder_id, preview)
 
                 elif isinstance(event, ToolExecutionUpdate):
-                    if placeholder_id and config.stream_updates:
-                        tool_msg = f"⚙️ *Executing tool:* `{event.tool_name}` ({event.action})..."
-                        await self.edit_message_text(chat_id, placeholder_id, tool_msg)
+                    last_active_action = event.action
+                    now = time.time()
+                    interval = getattr(config, "status_notify_interval", 1.2)
+                    if event.action != last_status_action and (now - last_status_time >= interval):
+                        last_status_time = now
+                        last_status_action = event.action
+                        status_messages_sent += 1
+
+                        # On first tool action, remove the initial thinking placeholder
+                        if placeholder_id:
+                            try:
+                                await self.delete_message(chat_id, placeholder_id)
+                            except Exception:
+                                pass
+                            placeholder_id = None
+
+                        # Push status update message directly to Telegram
+                        status_msg = f"🔨 Currently, {event.action}..."
+                        await self.send_message(chat_id, status_msg, parse_mode=None)
 
                 elif isinstance(event, ForwarderResult):
                     final_result = event
@@ -333,12 +377,12 @@ class TelegramBot:
             )
 
             if final_result and final_result.status in ("ERROR", "TIMEOUT") and final_result.error:
-                final_text = humanize_error(final_result.error)
+                final_text = humanize_error(final_result.error, last_action=last_active_action)
             elif not final_text.strip():
                 if final_result and final_result.error:
-                    final_text = humanize_error(final_result.error)
+                    final_text = humanize_error(final_result.error, last_action=last_active_action)
                 else:
-                    final_text = humanize_error("Empty response received from engine.")
+                    final_text = humanize_error("Empty response received from engine.", last_action=last_active_action)
 
             # Update session stats
             new_conv_id = (final_result and final_result.conversation_id) or conv_id
@@ -351,37 +395,39 @@ class TelegramBot:
                 output_tokens=out_tok,
             )
 
-            # Format formatted hermes output
+            # Format hermes output
             formatted_text = format_hermes_output(final_text)
             chunks = split_message(formatted_text)
 
             if placeholder_id:
-                # Edit first placeholder with chunk 0
+                # No status messages sent; edit placeholder directly
                 await self.edit_message_text(chat_id, placeholder_id, chunks[0])
-                # Send remaining chunks if any
                 for chunk in chunks[1:]:
                     await self.send_message(chat_id, chunk)
             else:
+                # Status messages were sent; send final response at bottom of conversation
                 for chunk in chunks:
                     await self.send_message(chat_id, chunk)
 
         except asyncio.CancelledError:
             logger.info(f"Task for chat_id={chat_id} was cancelled by user.")
+            cancel_msg = "🛑 *Operation Cancelled.*\nThe ongoing request was stopped."
             if placeholder_id:
-                await self.edit_message_text(
-                    chat_id,
-                    placeholder_id,
-                    "🛑 *Operation Cancelled.*\nThe ongoing request was stopped.",
-                )
+                await self.edit_message_text(chat_id, placeholder_id, cancel_msg)
+            else:
+                await self.send_message(chat_id, cancel_msg)
             raise
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
-            err_text = humanize_error(str(e))
+            err_text = humanize_error(str(e), last_action=last_active_action)
             if placeholder_id:
                 await self.edit_message_text(chat_id, placeholder_id, err_text)
             else:
                 await self.send_message(chat_id, err_text)
         finally:
+            stop_typing.set()
+            if not typing_task.done():
+                typing_task.cancel()
             self._active_tasks.pop(chat_id, None)
 
     async def process_update(self, update: Dict[str, Any]):

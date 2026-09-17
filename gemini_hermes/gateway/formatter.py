@@ -103,24 +103,30 @@ def sanitize_streaming_markdown(text: str) -> str:
     # Close unclosed bold asterisks
     if text.count("*") % 2 != 0:
         text += "*"
+    # Close unclosed italic underscores
+    if text.count("_") % 2 != 0:
+        text += "_"
     return text
 
 
-def humanize_error(error_str: str, context: str = "") -> str:
+def humanize_error(error_str: str, context: str = "", last_action: str = "") -> str:
     """Transforms raw internal errors or exception strings into clear, friendly, and actionable explanations."""
     err_raw = (error_str or "").strip()
     err_lower = err_raw.lower()
 
     if "timeout" in err_lower or "timed out" in err_lower:
+        last_step_info = f"\n*Last Active Step:*\nCurrently, {last_action}\n" if last_action else ""
         return (
-            "⏳ *Request Timed Out*\n\n"
-            "I spent over 2 minutes trying to process your request, but the underlying engine didn't finish in time.\n\n"
-            "*Likely Causes:*\n"
-            "• Analyzing complex binary files (such as dense PDFs) can take a long time to read.\n"
-            "• The current conversation thread may have built up a very long history.\n\n"
-            "*How to fix it directly:*\n"
-            "1. Type `/reset` to start a clean, fresh conversation session.\n"
-            "2. If you attached a PDF or large file, try sending specific pages as an image (PNG/JPG) or pasting plain text."
+            "⏳ *Execution Timed Out*\n\n"
+            "The model engine took longer than expected to complete the current operation.\n"
+            f"{last_step_info}\n"
+            "*Why this happens:*\n"
+            "• Heavy tasks (such as scaffolding, dependency installations, or extensive file builds) can pause output while processing.\n"
+            "• If no output is detected for 5 minutes (or 15 minutes total ceiling), the forwarder safely stops to avoid hanging indefinitely.\n\n"
+            "*How to continue:*\n"
+            "1. Type `/status` to inspect current system state and thread ID.\n"
+            "2. If files were partially created, ask me to 'continue the build' to pick up right where I left off.\n"
+            "3. Type `/reset` if you would like to clear the conversation and start with a fresh thread."
         )
 
     if "lock" in err_lower or "busy" in err_lower or "already running" in err_lower or "presence" in err_lower:
