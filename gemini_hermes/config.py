@@ -30,6 +30,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
+    app_version: str = "1.1.0"
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
         default_factory=lambda: [
@@ -49,6 +50,9 @@ class Config(BaseModel):
     workspace_dir: str = Field(default_factory=lambda: os.environ.get("WORKSPACE_DIR", str(BASE_DIR)))
     dangerously_skip_permissions: bool = Field(
         default_factory=lambda: os.environ.get("DANGEROUSLY_SKIP_PERMISSIONS", "true").lower() in ("true", "1", "yes")
+    )
+    forwarder_timeout: float = Field(
+        default_factory=lambda: float(os.environ.get("FORWARDER_TIMEOUT", "150.0"))
     )
 
     @property

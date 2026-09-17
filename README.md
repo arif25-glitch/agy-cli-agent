@@ -1,6 +1,12 @@
-# 🪐 Gemini-Hermes AI Agent
+# 🪐 Gemini-Hermes AI Agent `v1.1.0`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague inspired by **Nous Research's Hermes Agent**, powered by **Google Antigravity CLI (`agy`)** as its proxy model execution engine, and connected via a **Telegram Gateway**.
+
+> **Release v1.1.0 Major Improvements:**
+> - **Humanized Error Handling**: Translates technical timeouts, locks, and upstream errors into actionable guidance.
+> - **Session Concurrency Protection**: Per-chat locking prevents colliding background processes.
+> - **Execution Timeout & Process Cancellation**: Configurable timeout (`150s`) with immediate task cancellation on `/reset`.
+> - **Telegram Markdown Sanitizer**: Prevents entity parsing errors during real-time streaming updates.
 
 ---
 
