@@ -147,10 +147,11 @@ class TelegramBot:
     async def handle_start(self, chat_id: int, user_id: int):
         skills_count = len(self.skill_manager.get_all_skills())
         text = (
-            f"🤖 *Welcome to Gemini-Hermes!*\n\n"
-            f"I am an autonomous, persistent AI agent colleague inspired by **Nous Research's Hermes**, "
-            f"powered by **Google Antigravity CLI (`agy`)** as my proxy model execution engine.\n\n"
+            f"🤖 *Welcome to Gemini-Hermes (v{config.app_version})!*\n\n"
+            f"I am an autonomous, persistent AI agent colleague inspired by *Nous Research's Hermes*, "
+            f"powered by *Google Antigravity CLI (`agy`)* as my proxy model execution engine.\n\n"
             f"⚙️ *Engine:* Antigravity CLI Proxy (`agy`)\n"
+            f"📦 *App Version:* `v{config.app_version}`\n"
             f"🧠 *Reasoning Effort:* `{config.reasoning_effort}`\n"
             f"💾 *Persistent Memory:* Active (`MEMORY.md` & `USER.md`)\n"
             f"🛠️ *Skills Catalog:* `{skills_count}` active skills\n\n"
@@ -192,6 +193,7 @@ class TelegramBot:
 
         text = (
             f"📊 *Gemini-Hermes Status:*\n\n"
+            f"• *App Version:* `v{config.app_version}`\n"
             f"• *Model Engine:* {status_symbol}\n"
             f"• *Binary:* `{self.forwarder.agy_bin}`\n"
             f"• *Reasoning Effort:* `{config.reasoning_effort}`\n"
