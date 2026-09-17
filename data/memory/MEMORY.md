@@ -9,3 +9,9 @@
 
 ## Key Facts & Lessons
 - Initialized: 2026-09-17 21:18:39
+- Real-Time Status Push ("Bomb Chat"): For building and multi-step tool execution, push separate short status messages directly to Telegram (e.g. `🔨 Currently, creating a "..." file...`) throttled at 1.2s. The initial thinking placeholder is cleared on the first tool action, and the final response is delivered at the bottom of the chat.
+- Extended Inactivity & Timeout Ceilings: Forwarder inactivity timeout expanded to 300s (5 min) and total ceiling to 900s (15 min) to comfortably handle heavy dependencies and builds without timing out.
+- Contextual Timeout Diagnostics: Timeout errors now report the exact last active tool step and clear actionable recovery instructions.
+- Zero-Dependency Web Architecture: Embedded atomic JSON database patterns allow instant deployment without external DB containers or native compilation dependencies.
+- Next.js Cashflow App: Built and validated in /root/.gemini/antigravity-cli/scratch/cashflow-subscription.
+

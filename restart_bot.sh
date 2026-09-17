@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-sleep 4
+sleep 6
 # Kill previous bot process
 kill 831 2>/dev/null || true
 pkill -f "python3 -m gemini_hermes.cli start" 2>/dev/null || true

@@ -87,8 +87,10 @@ class AgyForwarder:
         cmd = self._build_command(prompt, conversation_id)
         logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id})...")
 
-        exec_timeout = timeout or getattr(config, "forwarder_timeout", 150.0)
+        max_total_timeout = timeout or getattr(config, "forwarder_timeout", 900.0)
+        inactivity_timeout = getattr(config, "inactivity_timeout", 300.0)
         start_time = asyncio.get_event_loop().time()
+        last_activity_time = asyncio.get_event_loop().time()
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -102,14 +104,24 @@ class AgyForwarder:
 
         try:
             while True:
-                elapsed = asyncio.get_event_loop().time() - start_time
-                remaining = max(1.0, exec_timeout - elapsed)
-                if elapsed >= exec_timeout:
-                    raise asyncio.TimeoutError()
+                now = asyncio.get_event_loop().time()
+                total_elapsed = now - start_time
+                if total_elapsed >= max_total_timeout:
+                    logger.warning(f"Max total timeout ({max_total_timeout}s) reached.")
+                    raise asyncio.TimeoutError(f"Maximum execution ceiling of {int(max_total_timeout)}s reached.")
+
+                inactivity_elapsed = now - last_activity_time
+                remaining = max(1.0, inactivity_timeout - inactivity_elapsed)
+                if inactivity_elapsed >= inactivity_timeout:
+                    logger.warning(f"Inactivity timeout ({inactivity_timeout}s) reached.")
+                    raise asyncio.TimeoutError(f"No response or tool activity detected for {int(inactivity_timeout)}s.")
 
                 line = await asyncio.wait_for(proc.stdout.readline(), timeout=remaining)
                 if not line:
                     break
+
+                # Output received from agy proves activity; reset inactivity timer
+                last_activity_time = asyncio.get_event_loop().time()
                 line_str = line.decode("utf-8", errors="replace").strip()
                 if not line_str:
                     continue
@@ -170,8 +182,11 @@ class AgyForwarder:
                 )
                 yield result_event
 
-        except asyncio.TimeoutError:
-            logger.error(f"agy CLI execution timed out after {exec_timeout}s")
+        except asyncio.TimeoutError as te:
+            now = asyncio.get_event_loop().time()
+            elapsed = int(now - start_time)
+            err_msg = str(te).strip() if str(te).strip() else f"Execution timed out after {elapsed} seconds."
+            logger.error(f"agy CLI execution timed out after {elapsed}s: {err_msg}")
             try:
                 proc.terminate()
                 await asyncio.sleep(0.5)
@@ -184,7 +199,7 @@ class AgyForwarder:
                     conversation_id=extracted_conv_id,
                     status="TIMEOUT",
                     response="".join(accumulated_text),
-                    error=f"Execution timed out after {int(exec_timeout)} seconds. The engine took too long to respond.",
+                    error=err_msg,
                 )
 
         except asyncio.CancelledError:

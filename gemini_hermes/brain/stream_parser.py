@@ -42,7 +42,38 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
         # Check tool execution
         tool_name = su.get("tool_name") or su.get("canonical_tool")
         if tool_name:
-            action = su.get("tool_action", f"Running {tool_name}")
+            tool_info = su.get("tool_info", {})
+            params = tool_info.get("parameters", {}) if isinstance(tool_info, dict) else {}
+
+            action = su.get("tool_action") or params.get("toolAction") or params.get("toolSummary")
+            if tool_name in ("write_to_file", "write_file"):
+                tgt = params.get("TargetFile") or params.get("target_file") or params.get("file_path") or ""
+                fname = tgt.split("/")[-1] if tgt else ""
+                action = f'creating a "{fname}" file' if fname else "creating a file"
+            elif tool_name in ("replace_file_content", "edit_file"):
+                tgt = params.get("TargetFile") or params.get("target_file") or params.get("file_path") or ""
+                fname = tgt.split("/")[-1] if tgt else ""
+                action = f'updating "{fname}" file' if fname else "updating file content"
+            elif tool_name in ("run_command", "execute_command", "bash"):
+                cmd = params.get("CommandLine") or params.get("command") or ""
+                short_cmd = (cmd[:35] + "...") if len(cmd) > 35 else cmd
+                action = f'running "{short_cmd}"' if short_cmd else "running command"
+            elif tool_name in ("view_file", "read_file"):
+                tgt = params.get("AbsolutePath") or params.get("file_path") or ""
+                fname = tgt.split("/")[-1] if tgt else ""
+                action = f'reading "{fname}" file' if fname else "reading file"
+            elif tool_name in ("list_dir", "list_directory"):
+                action = "inspecting project directory"
+            elif tool_name in ("find_by_name", "grep_search", "search_code"):
+                action = "searching project files"
+            elif tool_name in ("invoke_subagent", "spawn_subagent"):
+                action = "delegating task to sub-agent worker"
+            elif not action:
+                action = f"executing {tool_name}"
+            else:
+                # Strip markdown ticks or asterisks from existing action text
+                action = str(action).replace("`", "").replace("*", "").strip()
+
             return ToolExecutionUpdate(tool_name=tool_name, action=action)
 
     elif event_type == "result":
