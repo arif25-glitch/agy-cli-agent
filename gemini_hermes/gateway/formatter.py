@@ -88,3 +88,83 @@ def format_hermes_output(text: str) -> str:
         text = text.replace(f"__HERMES_CODE_BLOCK_{i}__", c)
 
     return text.strip()
+
+
+def sanitize_streaming_markdown(text: str) -> str:
+    """Closes unclosed markdown entities during real-time streaming to prevent Telegram parsing errors."""
+    if not text:
+        return text
+    # Close unclosed triple backtick code blocks
+    if text.count("```") % 2 != 0:
+        text += "\n```"
+    # Close unclosed inline backticks
+    elif text.count("`") % 2 != 0:
+        text += "`"
+    # Close unclosed bold asterisks
+    if text.count("*") % 2 != 0:
+        text += "*"
+    return text
+
+
+def humanize_error(error_str: str, context: str = "") -> str:
+    """Transforms raw internal errors or exception strings into clear, friendly, and actionable explanations."""
+    err_raw = (error_str or "").strip()
+    err_lower = err_raw.lower()
+
+    if "timeout" in err_lower or "timed out" in err_lower:
+        return (
+            "⏳ *Request Timed Out*\n\n"
+            "I spent over 2 minutes trying to process your request, but the underlying engine didn't finish in time.\n\n"
+            "*Likely Causes:*\n"
+            "• Analyzing complex binary files (such as dense PDFs) can take a long time to read.\n"
+            "• The current conversation thread may have built up a very long history.\n\n"
+            "*How to fix it directly:*\n"
+            "1. Type `/reset` to start a clean, fresh conversation session.\n"
+            "2. If you attached a PDF or large file, try sending specific pages as an image (PNG/JPG) or pasting plain text."
+        )
+
+    if "lock" in err_lower or "busy" in err_lower or "already running" in err_lower or "presence" in err_lower:
+        return (
+            "🔒 *Session Busy / Locked*\n\n"
+            "The conversation is currently occupied or a previous background process didn't release the session lock.\n\n"
+            "*How to fix it directly:*\n"
+            "• Type `/reset` to immediately clear the active lock and initialize a fresh thread."
+        )
+
+    if "rate limit" in err_lower or "quota" in err_lower or "429" in err_lower or "resource_exhausted" in err_lower:
+        return (
+            "🛑 *API Rate Limit / Quota Reached*\n\n"
+            "The model execution engine encountered a temporary upstream rate limit or quota boundary.\n\n"
+            "*How to fix it directly:*\n"
+            "• Please wait 30–60 seconds before sending your next message, then try again."
+        )
+
+    if "cant find end of the entity" in err_lower or "parse entities" in err_lower or "bad request" in err_lower:
+        return (
+            "📝 *Formatting Parsing Error*\n\n"
+            "Telegram had trouble rendering special characters or formatting tags in the output stream.\n\n"
+            "*How to fix it directly:*\n"
+            "• The text has been sanitized. You can also type `/reset` to refresh the thread."
+        )
+
+    if "no such file" in err_lower or "not found" in err_lower:
+        return (
+            "📁 *File Not Accessible*\n\n"
+            "I could not locate or open the specified file on disk.\n\n"
+            "*How to fix it directly:*\n"
+            "• Please try re-sending or uploading the file directly into this chat."
+        )
+
+    # General error fallback with simplified explanation
+    clean_err = err_raw.replace("`", "'")
+    if len(clean_err) > 250:
+        clean_err = clean_err[:250] + "..."
+
+    return (
+        "⚠️ *Execution Interrupted*\n\n"
+        f"An error occurred while processing: `{clean_err}`\n\n"
+        "*How to fix it directly:*\n"
+        "• Type `/reset` to wipe current thread cache and start fresh.\n"
+        "• Type `/status` to check engine and model proxy connectivity."
+    )
+

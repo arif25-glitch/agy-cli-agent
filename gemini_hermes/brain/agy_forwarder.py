@@ -82,10 +82,13 @@ class AgyForwarder:
             return {"ok": False, "agy_bin": self.agy_bin, "error": str(e)}
 
     async def forward_stream(
-        self, prompt: str, conversation_id: Optional[str] = None
+        self, prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
     ) -> AsyncGenerator[Union[TokenDelta, ThinkingDelta, ToolExecutionUpdate, ForwarderResult], None]:
         cmd = self._build_command(prompt, conversation_id)
         logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id})...")
+
+        exec_timeout = timeout or getattr(config, "forwarder_timeout", 150.0)
+        start_time = asyncio.get_event_loop().time()
 
         proc = await asyncio.create_subprocess_exec(
             *cmd,
@@ -99,7 +102,12 @@ class AgyForwarder:
 
         try:
             while True:
-                line = await proc.stdout.readline()
+                elapsed = asyncio.get_event_loop().time() - start_time
+                remaining = max(1.0, exec_timeout - elapsed)
+                if elapsed >= exec_timeout:
+                    raise asyncio.TimeoutError()
+
+                line = await asyncio.wait_for(proc.stdout.readline(), timeout=remaining)
                 if not line:
                     break
                 line_str = line.decode("utf-8", errors="replace").strip()
@@ -127,10 +135,21 @@ class AgyForwarder:
                         result_event = parsed
                         yield parsed
 
-            await proc.wait()
+            # Wait for process exit with short grace period
+            try:
+                await asyncio.wait_for(proc.wait(), timeout=5.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
 
             if proc.returncode != 0 and (not result_event or result_event.status != "SUCCESS"):
-                stderr_bytes = await proc.stderr.read()
+                stderr_bytes = b""
+                try:
+                    stderr_bytes = await asyncio.wait_for(proc.stderr.read(), timeout=3.0)
+                except Exception:
+                    pass
                 err_msg = stderr_bytes.decode("utf-8", errors="replace").strip()
                 logger.error(f"agy CLI failed with code {proc.returncode}: {err_msg}")
                 if not result_event:
@@ -150,6 +169,23 @@ class AgyForwarder:
                     response="".join(accumulated_text),
                 )
                 yield result_event
+
+        except asyncio.TimeoutError:
+            logger.error(f"agy CLI execution timed out after {exec_timeout}s")
+            try:
+                proc.terminate()
+                await asyncio.sleep(0.5)
+                if proc.returncode is None:
+                    proc.kill()
+            except Exception:
+                pass
+            if not result_event:
+                yield ForwarderResult(
+                    conversation_id=extracted_conv_id,
+                    status="TIMEOUT",
+                    response="".join(accumulated_text),
+                    error=f"Execution timed out after {int(exec_timeout)} seconds. The engine took too long to respond.",
+                )
 
         except asyncio.CancelledError:
             try:

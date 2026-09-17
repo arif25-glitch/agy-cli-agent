@@ -50,6 +50,9 @@ class Config(BaseModel):
     dangerously_skip_permissions: bool = Field(
         default_factory=lambda: os.environ.get("DANGEROUSLY_SKIP_PERMISSIONS", "true").lower() in ("true", "1", "yes")
     )
+    forwarder_timeout: float = Field(
+        default_factory=lambda: float(os.environ.get("FORWARDER_TIMEOUT", "150.0"))
+    )
 
     @property
     def is_configured(self) -> bool:

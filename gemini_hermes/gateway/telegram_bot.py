@@ -11,7 +11,12 @@ from gemini_hermes.skills.manager import SkillManager
 from gemini_hermes.persona.system_prompt import build_system_prompt
 from gemini_hermes.brain.agy_forwarder import AgyForwarder
 from gemini_hermes.brain.stream_parser import TokenDelta, ForwarderResult, ToolExecutionUpdate
-from gemini_hermes.gateway.formatter import format_hermes_output, split_message
+from gemini_hermes.gateway.formatter import (
+    format_hermes_output,
+    split_message,
+    humanize_error,
+    sanitize_streaming_markdown,
+)
 
 logger = logging.getLogger("gemini-hermes.telegram")
 
@@ -35,6 +40,7 @@ class TelegramBot:
         self.is_running = False
         self.last_update_id = 0
         self.bot_info: Dict[str, Any] = {}
+        self._active_tasks: Dict[int, asyncio.Task] = {}
 
     async def _api_call(self, method: str, json_data: Optional[Dict[str, Any]] = None, timeout: float = 35.0) -> Any:
         if not self.client or self.client.is_closed:
@@ -265,6 +271,10 @@ class TelegramBot:
             await self.send_message(chat_id, result)
 
     async def handle_chat_message(self, chat_id: int, user_id: int, user_text: str):
+        curr_task = asyncio.current_task()
+        if curr_task:
+            self._active_tasks[chat_id] = curr_task
+
         sess = self.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
 
@@ -299,8 +309,9 @@ class TelegramBot:
                     ):
                         last_edit_time = now
                         await self.send_chat_action(chat_id, "typing")
-                        # Format text with cursor
-                        preview = format_hermes_output(accumulated_text) + " ▌"
+                        # Format text with cursor and clean streaming markdown
+                        formatted_preview = format_hermes_output(accumulated_text)
+                        preview = sanitize_streaming_markdown(formatted_preview) + " ▌"
                         if len(preview) <= 4000:
                             await self.edit_message_text(chat_id, placeholder_id, preview)
 
@@ -319,11 +330,13 @@ class TelegramBot:
                 else accumulated_text
             )
 
-            if not final_text.strip():
+            if final_result and final_result.status in ("ERROR", "TIMEOUT") and final_result.error:
+                final_text = humanize_error(final_result.error)
+            elif not final_text.strip():
                 if final_result and final_result.error:
-                    final_text = f"❌ *Execution Error:*\n`{final_result.error}`"
+                    final_text = humanize_error(final_result.error)
                 else:
-                    final_text = "⚠️ Gemini-Hermes completed the task with empty output."
+                    final_text = humanize_error("Empty response received from engine.")
 
             # Update session stats
             new_conv_id = (final_result and final_result.conversation_id) or conv_id
@@ -350,13 +363,24 @@ class TelegramBot:
                 for chunk in chunks:
                     await self.send_message(chat_id, chunk)
 
+        except asyncio.CancelledError:
+            logger.info(f"Task for chat_id={chat_id} was cancelled by user.")
+            if placeholder_id:
+                await self.edit_message_text(
+                    chat_id,
+                    placeholder_id,
+                    "🛑 *Operation Cancelled.*\nThe ongoing request was stopped.",
+                )
+            raise
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
-            err_text = f"❌ *Gemini-Hermes encountered an error:*\n`{str(e)}`"
+            err_text = humanize_error(str(e))
             if placeholder_id:
                 await self.edit_message_text(chat_id, placeholder_id, err_text)
             else:
                 await self.send_message(chat_id, err_text)
+        finally:
+            self._active_tasks.pop(chat_id, None)
 
     async def process_update(self, update: Dict[str, Any]):
         msg = update.get("message") or update.get("edited_message")
@@ -379,6 +403,16 @@ class TelegramBot:
         if not self.is_user_allowed(user_id):
             logger.warning(f"Unauthorized access attempt from user_id={user_id}, chat_id={chat_id}")
             await self.handle_unauthorized(chat_id, user_id)
+            return
+
+        # Check for active running task to prevent race conditions & lock contention
+        is_command = bool(text and text.strip().startswith("/"))
+        if not is_command and chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
+            await self.send_message(
+                chat_id,
+                "⏳ *Still processing...*\n\n"
+                "I am currently working on your previous request or document. Please give me a moment to finish, or type `/reset` to cancel it and start fresh."
+            )
             return
 
         # Handle photos / images
@@ -457,10 +491,13 @@ class TelegramBot:
             elif cmd == "/help":
                 await self.handle_help(chat_id)
             elif cmd in ("/new", "/reset"):
+                if chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
+                    self._active_tasks[chat_id].cancel()
+                    self._active_tasks.pop(chat_id, None)
                 self.memory_store.reset_session(chat_id)
                 await self.send_message(
                     chat_id,
-                    "🔄 *Conversation reset.* A new session has been initiated with fresh context!",
+                    "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",
                 )
             elif cmd == "/status":
                 await self.handle_status(chat_id)
