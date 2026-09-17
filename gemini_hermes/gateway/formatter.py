@@ -103,6 +103,9 @@ def sanitize_streaming_markdown(text: str) -> str:
     # Close unclosed bold asterisks
     if text.count("*") % 2 != 0:
         text += "*"
+    # Close unclosed italic underscores
+    if text.count("_") % 2 != 0:
+        text += "_"
     return text
 
 
