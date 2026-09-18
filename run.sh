@@ -9,6 +9,13 @@ LOG_FILE="$SCRIPT_DIR/gemini-hermes.log"
 
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
+# Auto-detect virtual environment if present
+if [ -d "$SCRIPT_DIR/.venv/bin" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+else
+    PYTHON_BIN="python3"
+fi
+
 show_help() {
     echo "Usage: ./run.sh {setup|start|background|stop|status|logs|test}"
     echo ""
@@ -25,14 +32,14 @@ show_help() {
 
 case "$1" in
     setup)
-        python3 -m gemini_hermes.cli setup
+        $PYTHON_BIN -m gemini_hermes.cli setup
         ;;
     test)
-        python3 -m gemini_hermes.cli test
+        $PYTHON_BIN -m gemini_hermes.cli test
         ;;
     start)
         echo "Starting Gemini-Hermes in foreground..."
-        exec python3 -m gemini_hermes.cli start
+        exec $PYTHON_BIN -m gemini_hermes.cli start
         ;;
     background)
         if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
@@ -40,7 +47,7 @@ case "$1" in
             exit 0
         fi
         echo "Starting Gemini-Hermes in background..."
-        nohup python3 -m gemini_hermes.cli start >> "$LOG_FILE" 2>&1 &
+        nohup $PYTHON_BIN -m gemini_hermes.cli start >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         echo "✅ Gemini-Hermes started in background with PID: $(cat "$PID_FILE")"
         echo "View logs with: ./run.sh logs"

@@ -51,13 +51,38 @@ class AgyForwarder:
             cmd = [self.agy_bin, "-p", "ping", "--output-format", "json", "--effort", "low"]
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
+                stdin=asyncio.subprocess.DEVNULL,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            try:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+            except asyncio.TimeoutError:
+                try:
+                    proc.kill()
+                    await proc.wait()
+                except Exception:
+                    pass
+                return {
+                    "ok": False,
+                    "agy_bin": self.agy_bin,
+                    "error": "Timeout waiting for agy CLI response (possible unauthenticated session or network issue).",
+                }
+
+            stdout_str = stdout.decode().strip()
+            stderr_str = stderr.decode().strip()
+
+            if "Authentication required" in stdout_str or "Authentication required" in stderr_str:
+                return {
+                    "ok": False,
+                    "auth_required": True,
+                    "agy_bin": self.agy_bin,
+                    "error": "Authentication required. No active login token session found.",
+                }
+
             if proc.returncode == 0:
                 try:
-                    data = json.loads(stdout.decode())
+                    data = json.loads(stdout_str)
                     return {
                         "ok": True,
                         "agy_bin": self.agy_bin,
@@ -69,13 +94,13 @@ class AgyForwarder:
                     return {
                         "ok": True,
                         "agy_bin": self.agy_bin,
-                        "raw_output": stdout.decode().strip(),
+                        "raw_output": stdout_str,
                     }
             else:
                 return {
                     "ok": False,
                     "agy_bin": self.agy_bin,
-                    "error": stderr.decode().strip() or f"Exit code {proc.returncode}",
+                    "error": stderr_str or stdout_str or f"Exit code {proc.returncode}",
                 }
         except Exception as e:
             logger.error(f"Health check failed: {e}")

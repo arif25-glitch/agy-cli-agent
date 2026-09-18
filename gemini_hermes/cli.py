@@ -7,6 +7,11 @@ from pathlib import Path
 
 from gemini_hermes.config import BASE_DIR, config
 from gemini_hermes.brain.agy_forwarder import AgyForwarder
+from gemini_hermes.brain.token_manager import (
+    has_valid_token_session,
+    ensure_login_token_session,
+    get_default_token_path,
+)
 from gemini_hermes.memory.store import MemoryStore
 from gemini_hermes.skills.manager import SkillManager
 from gemini_hermes.gateway.telegram_bot import TelegramBot
@@ -56,12 +61,28 @@ async def run_setup():
     users_input = input(users_prompt).strip()
     allowed_users = users_input if users_input else current_users
 
-    # Verify agy forwarder
-    print("\n🔍 Checking Antigravity CLI (agy) model engine...")
+    # Verify agy forwarder & login token session
+    print("\n🔍 Checking Antigravity CLI (agy) login token session...")
+    token_path = get_default_token_path()
+    if not has_valid_token_session():
+        print("⚠️ No active Antigravity CLI login token session found.")
+        ensure_login_token_session(interactive=True, agy_bin=config.agy_bin)
+    else:
+        print(f"✅ Active Antigravity CLI login token session found: {token_path}")
+
+    print("\n🔍 Verifying Antigravity CLI (agy) model engine...")
     forwarder = AgyForwarder()
     health = await forwarder.check_health()
     if health.get("ok"):
         print(f"✅ Antigravity CLI (agy) verified! Engine response: {health.get('sample_response')}")
+    elif health.get("auth_required"):
+        print(f"⚠️ {health.get('error')}")
+        retry = input("Would you like to provide your login token session now? (Y/n): ").strip().lower()
+        if retry != "n":
+            if ensure_login_token_session(interactive=True, agy_bin=config.agy_bin):
+                health = await forwarder.check_health()
+                if health.get("ok"):
+                    print(f"✅ Antigravity CLI (agy) verified! Engine response: {health.get('sample_response')}")
     else:
         print(f"⚠️ Warning: agy check issue: {health.get('error')}")
 
@@ -91,11 +112,21 @@ async def run_diagnostics():
     print("=" * 60)
 
     print("\n1. [BRAIN] Testing Antigravity CLI (agy) Proxy Forwarder...")
+    token_path = get_default_token_path()
+    if has_valid_token_session():
+        print(f"   ✅ Active login token session verified: {token_path}")
+    else:
+        print(f"   ❌ No active login token session found at: {token_path}")
+        print(f"      Run './run.sh setup' or './run.sh start' to authenticate.")
+
     forwarder = AgyForwarder()
     health = await forwarder.check_health()
     if health.get("ok"):
         print(f"   ✅ agy binary reachable: {forwarder.agy_bin}")
         print(f"   ✅ Test prompt succeeded. Result: '{health.get('sample_response')}'")
+    elif health.get("auth_required"):
+        print(f"   ❌ Authentication required: {health.get('error')}")
+        print(f"      Run './run.sh setup' or './run.sh start' to provide your login token session.")
     else:
         print(f"   ❌ agy forwarder failed: {health.get('error')}")
 
@@ -133,6 +164,18 @@ async def start_bot():
         print("❌ Error: TELEGRAM_BOT_TOKEN is not set.")
         print("Please run setup first: python3 -m gemini_hermes.cli setup")
         sys.exit(1)
+
+    if not has_valid_token_session():
+        if sys.stdin.isatty():
+            print("⚠️ No active Antigravity CLI login token session found.")
+            if not ensure_login_token_session(interactive=True, agy_bin=config.agy_bin):
+                print("❌ Error: Valid login token session is required to start Gemini-Hermes.")
+                sys.exit(1)
+        else:
+            token_path = get_default_token_path()
+            print(f"❌ Error: No active Antigravity CLI login token session found at {token_path}.")
+            print("Please run setup first: ./run.sh setup (or run ./run.sh start interactively).")
+            sys.exit(1)
 
     bot = TelegramBot()
     await bot.run()

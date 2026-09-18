@@ -5,6 +5,14 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.2] - 2026-09-18
+
+### Added
+- **Automated Login Token Session Detection & Interactive Prompt**: Added `token_manager` module that verifies the presence and integrity of Antigravity CLI (`agy`) OAuth sessions (`antigravity-oauth-token`). If no active session is found, prompts the user to paste their JSON token, specify an existing token file path, or launch Google OAuth login directly.
+- **Cross-Account Session Auto-Import**: Detects readable token sessions from standard system locations (e.g. `/root/.gemini/antigravity-cli/antigravity-oauth-token`) and automatically imports them for non-root users with `0600` permissions.
+- **Robust Forwarder Health Checks**: Hardened `AgyForwarder.check_health()` by binding standard input to `/dev/null` and adding process-kill timeout handling to prevent blocking on unauthenticated CLI prompts.
+- **Virtual Environment Auto-Detection**: `run.sh` automatically checks for and activates `$SCRIPT_DIR/.venv/bin/python3` when available.
+
 ## [1.3.1] - 2026-09-18
  
 ### Added

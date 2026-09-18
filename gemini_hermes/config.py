@@ -31,7 +31,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.3.1"
+    app_version: str = "1.3.2"
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
         default_factory=lambda: [
@@ -41,6 +41,7 @@ class Config(BaseModel):
         ]
     )
     agy_bin: str = Field(default_factory=lambda: os.environ.get("AGY_BIN", "/root/.local/bin/agy"))
+    agy_token_file: str = Field(default_factory=lambda: os.environ.get("AGY_TOKEN_FILE", ""))
     reasoning_effort: str = Field(default_factory=lambda: os.environ.get("REASONING_EFFORT", "medium"))
     stream_updates: bool = Field(
         default_factory=lambda: os.environ.get("STREAM_UPDATES", "true").lower() in ("true", "1", "yes")
