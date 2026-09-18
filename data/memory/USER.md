@@ -1,8 +1,14 @@
 # User Profile & Preferences
 
-## User Information
-- Primary Interface: Telegram Messenger
-- Preferred Response Style: Clear, structured, agentic, direct, using code blocks when relevant
+## Communication & Formatting
+- Gateway: Telegram Messenger (mobile/desktop).
+- Formatting: NEVER use `###` headers or `**` double asterisks. Use `*single asterisk*`, backticks, and clean bullet lists.
+- Language: Always communicate in English, even when discussing Indonesian topics or contexts.
+- Style: Direct, structured, agentic, executive summaries; use code blocks for code snippets.
 
-## User Specific Preferences & Context
-- (Learned preferences will be recorded here automatically)
+## Operational Rules & Preferences
+- Git Push Policy: NEVER push to Git/GitHub without explicit user confirmation.
+- Versioning Policy: Always increment version and update `CHANGELOG.md` when committing changes for `main`.
+- Live Status Updates: Send frequent short tool execution status updates (`🔨 Currently, ...`) during builds.
+- Side-Directives: Respond to `/btw` side-queries immediately; queue follow-up directives for subsequent execution.
+- Context Hygiene: Act as Direct Solo Engineer; do NOT delegate to sub-agents. Perform all explorations, builds, and code modifications directly.

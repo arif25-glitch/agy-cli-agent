@@ -4,6 +4,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, Optional, Any
 from gemini_hermes.config import MEMORY_DIR, SESSIONS_DIR
+from gemini_hermes.memory.templates import (
+    DEFAULT_MEMORY_TEMPLATE,
+    DEFAULT_USER_TEMPLATE,
+    DEFAULT_BACKLOG_TEMPLATE,
+    DEFAULT_REFERENCES_TEMPLATE,
+)
 
 logger = logging.getLogger("gemini-hermes.memory")
 
@@ -17,36 +23,27 @@ class MemoryStore:
 
         self.memory_file = self.memory_dir / "MEMORY.md"
         self.user_file = self.memory_dir / "USER.md"
+        self.backlog_file = self.memory_dir / "BACKLOG.md"
+        self.references_file = self.memory_dir / "REFERENCES.md"
         self.sessions_file = self.sessions_dir / "sessions.json"
 
         self._init_defaults()
 
     def _init_defaults(self):
         if not self.memory_file.exists():
-            default_memory = """# Gemini-Hermes Long-Term Memory
-
-## System & Agent Directives
-- Role: Gemini-Hermes Autonomous Assistant & Colleague
-- Engine: Antigravity CLI (agy) Proxy Engine
-- Gateway: Telegram Bot
-- Persistence: Continuous memory across restarts and sessions
-
-## Key Facts & Lessons
-- Initialized: {}
-""".format(datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+            default_memory = DEFAULT_MEMORY_TEMPLATE.format(
+                timestamp=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            )
             self.memory_file.write_text(default_memory, encoding="utf-8")
 
         if not self.user_file.exists():
-            default_user = """# User Profile & Preferences
+            self.user_file.write_text(DEFAULT_USER_TEMPLATE, encoding="utf-8")
 
-## User Information
-- Primary Interface: Telegram Messenger
-- Preferred Response Style: Clear, structured, agentic, direct, using code blocks when relevant
+        if not self.backlog_file.exists():
+            self.backlog_file.write_text(DEFAULT_BACKLOG_TEMPLATE, encoding="utf-8")
 
-## User Specific Preferences & Context
-- (Learned preferences will be recorded here automatically)
-"""
-            self.user_file.write_text(default_user, encoding="utf-8")
+        if not self.references_file.exists():
+            self.references_file.write_text(DEFAULT_REFERENCES_TEMPLATE, encoding="utf-8")
 
         if not self.sessions_file.exists():
             self._save_sessions({})
@@ -61,12 +58,22 @@ class MemoryStore:
             return self.user_file.read_text(encoding="utf-8")
         return ""
 
+    def get_backlog(self) -> str:
+        if self.backlog_file.exists():
+            return self.backlog_file.read_text(encoding="utf-8")
+        return ""
+
+    def get_references(self) -> str:
+        if self.references_file.exists():
+            return self.references_file.read_text(encoding="utf-8")
+        return ""
+
     def append_to_memory(self, note: str, section: str = "Key Facts & Lessons"):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         entry = f"- [{timestamp}] {note.strip()}\n"
         content = self.get_long_term_memory()
 
-        if section in content:
+        if f"## {section}" in content:
             parts = content.split(f"## {section}")
             new_content = parts[0] + f"## {section}\n" + entry + parts[1].lstrip("\n")
         else:
@@ -83,9 +90,37 @@ class MemoryStore:
         self.user_file.write_text(new_content, encoding="utf-8")
         logger.info(f"Updated user profile: {preference[:60]}...")
 
+    def append_to_backlog(self, task: str, section: str = "Active Tasks"):
+        entry = f"- {task.strip()}\n"
+        content = self.get_backlog()
+
+        if f"## {section}" in content:
+            parts = content.split(f"## {section}")
+            new_content = parts[0] + f"## {section}\n" + entry + parts[1].lstrip("\n")
+        else:
+            new_content = content.rstrip() + f"\n\n## {section}\n" + entry
+
+        self.backlog_file.write_text(new_content, encoding="utf-8")
+        logger.info(f"Appended backlog task: {task[:60]}...")
+
+    def append_to_references(self, title: str, url: str, section: str = "Sheets & Spreadsheets"):
+        entry = f"- {title.strip()}: {url.strip()}\n"
+        content = self.get_references()
+
+        if f"## {section}" in content:
+            parts = content.split(f"## {section}")
+            new_content = parts[0] + f"## {section}\n" + entry + parts[1].lstrip("\n")
+        else:
+            new_content = content.rstrip() + f"\n\n## {section}\n" + entry
+
+        self.references_file.write_text(new_content, encoding="utf-8")
+        logger.info(f"Appended reference: {title[:60]}...")
+
     def reset_long_term_memory(self):
         self.memory_file.unlink(missing_ok=True)
         self.user_file.unlink(missing_ok=True)
+        self.backlog_file.unlink(missing_ok=True)
+        self.references_file.unlink(missing_ok=True)
         self._init_defaults()
 
     def _load_sessions(self) -> Dict[str, Any]:
@@ -161,9 +196,16 @@ class MemoryStore:
     def render_memory_context(self) -> str:
         mem = self.get_long_term_memory().strip()
         usr = self.get_user_profile().strip()
+        backlog = self.get_backlog().strip()
+        refs = self.get_references().strip()
+
         context_parts = []
         if mem:
             context_parts.append(f"<persistent_memory>\n{mem}\n</persistent_memory>")
         if usr:
             context_parts.append(f"<user_profile>\n{usr}\n</user_profile>")
+        if backlog:
+            context_parts.append(f"<active_backlog>\n{backlog}\n</active_backlog>")
+        if refs:
+            context_parts.append(f"<external_references>\n{refs}\n</external_references>")
         return "\n\n".join(context_parts)

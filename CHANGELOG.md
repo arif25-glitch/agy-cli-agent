@@ -5,14 +5,22 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.8] - 2026-09-18
+
+### Added
+- **Singleton PID File Lock**: Added atomic PID locking in `gemini_hermes/cli.py` to prevent duplicate bot instances and ensure clean daemon lifecycle during background restarts.
+- **Personalized Operational Profile on Main**: Integrated user preferences, direct engineering workflows, project bookmarks (`data/projects/projects.json`), active task backlogs, and external references directly into `main`.
+
+### Merged
+- **Modular Multi-Domain Memory Architecture**: Fully merged `MemoryStore` multi-domain persistence (`MEMORY.md`, `USER.md`, `BACKLOG.md`, `REFERENCES.md`) and `/task_add`, `/ref_add` gateway commands into `main`.
+
 ## [1.3.7] - 2026-09-18
 
-### Changed
-- **Domain-Agnostic Core Foundation**: Standardized `main` branch to represent a versatile, domain-agnostic autonomous agent platform rather than an exclusively software-engineering focused persona.
-- **System Prompt Generalization**: Updated Section 5 (Proactive Self-Verification & Quality Checks) and Section 6 (Direct Solo Execution & Context Hygiene) in `HERMES_BASE_INSTRUCTIONS` to apply universally across research, analytical, and technical domains.
-- **Operational Directives Pruned**: Refactored `MEMORY.md` pre-conclusion verification directives to specify general sanity checks and consistency validation.
-- **Gateway & Formatter Generalization**: Updated Telegram `/help` natural conversation guidance and runtime error message hints in `formatter.py` to be domain-neutral.
-- **Skill Documentation Alignment**: Refactored `memory_keeper` skill metadata definitions for `USER.md` to reflect general user preferences and interests.
+### Added
+- **Modular Multi-Domain Memory Architecture**: Refactored `MemoryStore` into four distinct storage domains: `MEMORY.md` (operational standards), `USER.md` (user preferences and communication rules), `BACKLOG.md` (active task queue and operational inquiries), and `REFERENCES.md` (external spreadsheets, documentation, and links).
+- **Telegram Gateway Memory Commands**: Added `/task_add <task>` to append items directly to `BACKLOG.md` and `/ref_add <title> | <url>` to record documentation and sheets in `REFERENCES.md`.
+- **Domain-Specific Prompt Context Injection**: Updated `render_memory_context` to inject structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) to optimize context hygiene and retrieval accuracy.
+- **Updated Memory Keeper Procedure**: Upgraded `memory_keeper` skill to v1.1.0 documenting best practices for multi-domain persistent memory.
 
 ## [1.3.6] - 2026-09-18
 

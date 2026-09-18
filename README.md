@@ -1,12 +1,12 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.7`
+# 🪐 Gemini-Hermes AI Agent `v1.3.8`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.3.7 Highlights:**
-> - **Domain-Agnostic Core Foundation**: Standardized `main` as a general-purpose, domain-agnostic autonomous platform. Preserved specialized engineering workflows for dedicated development branches.
-> - **Direct Solo Execution Mode**: Enforces single-agent context hygiene without subagent spawning, eliminating worker timeout overhead.
-> - **Universal Quality Verification**: Generalized proactive self-verification to validate deliverables across diverse research, analytical, and technical domains.
-> - **Modular Skills Arsenal**: Streamlined skills catalog of 8 core procedures adhering to the `agentskills.io` standard.
+> **Release v1.3.8 Highlights:**
+> - **Modular Multi-Domain Memory Architecture**: Refactored `MemoryStore` into four distinct storage domains: `MEMORY.md` (operational standards), `USER.md` (user preferences and communication rules), `BACKLOG.md` (active task queue and operational inquiries), and `REFERENCES.md` (external spreadsheets, documentation, and links).
+> - **Direct Solo Execution & Hands-on Engineering**: Decommissioned sub-agent delegation loops across prompt templates, skills, rules, and memory. Gemini-Hermes executes all commands, file edits, diagnostics, and builds directly.
+> - **Daemon Singleton PID Lock**: Enforced atomic PID file locking in `cli.py` to prevent duplicate bot instances and ensure daemon safety across restarts.
+> - **Integrated Personalized Operational Profiles**: Preserved specialized user preferences, active project bookmarks, and task backlogs directly on `main`.
 
 ---
 
@@ -24,7 +24,7 @@ flowchart TD
         Queue --> PromptEngine[Prompt & Persona Engine]
         
         subgraph Persistent State Layer
-            MemStore[(Memory Layer\nMEMORY.md & USER.md)]
+            MemStore[(Modular Memory Layer\nMEMORY.md, USER.md,\nBACKLOG.md, REFERENCES.md)]
             ProjStore[(Project State Index\ndata/projects/projects.json)]
             Skills[(Skills Catalog\n8 Modular Procedures)]
             Sessions[(SessionDB\nTurn Metrics & History)]
@@ -49,7 +49,7 @@ flowchart TD
 ## ✨ Core Features & Hermes Capabilities
 
 ### 1. Direct Solo Execution & Context Hygiene
-- **Direct Solo Execution**: Gemini-Hermes acts as a direct, hands-on autonomous agent executing tasks, research, analyses, and workflows directly in the session.
+- **Direct Solo Execution**: Gemini-Hermes acts as a direct, hands-on engineer executing inspections, builds, tests, and file modifications directly in the session.
 - **Subagent Prohibition**: Eliminates sub-agent spawning and delegation loops, preventing worker timeouts and context desynchronization.
 - **Pristine Primary Context**: Guards the conversation against noise and token bloat with compact, high-signal reasoning traces.
 
@@ -76,10 +76,10 @@ flowchart TD
 ### 5. Proactive Self-Verification
 - Automatically executes internal sanity checks, consistency reviews, and quality validation before finalizing complex multi-step responses.
 
-### 6. Persistent Long-Term Memory (`MEMORY.md` & `USER.md`)
-- **Continuous Memory**: Retains facts, project knowledge, user preferences, and configuration details across restarts.
-- **Dynamic Memory Context**: Relevant memory items are automatically injected into the agent prompt.
-- **Commands**: `/memory`, `/memory_add <text>`, `/memory_reset`.
+### 6. Persistent Modular Memory
+- **Domain-Specific Persistence**: Retains operational standards in `MEMORY.md`, user profile in `USER.md`, active task backlog in `BACKLOG.md`, and external references in `REFERENCES.md`.
+- **Dynamic Memory Context**: Structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) are automatically injected into the agent prompt.
+- **Commands**: `/memory`, `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
 ---
 
@@ -94,7 +94,7 @@ Gemini-Hermes features 8 modular procedures conforming to the `agentskills.io` s
 | `api_tester` | API / Validation | Probing REST/HTTP endpoints, contract mapping, curl execution, and JSON schema validation. |
 | `system_monitor` | System / DevOps | Host resource auditing (CPU, RAM, disk space), daemon process checks, and cron health alerting. |
 | `task_scheduler` | Scheduling / Cron | Procedure for managing delayed tasks, one-shot reminders, and recurring cron operations. |
-| `memory_keeper` | Memory / Context | Best practices for managing persistent long-term memory (`MEMORY.md` and `USER.md`). |
+| `memory_keeper` | Memory / Context | Best practices for managing persistent modular memory (`MEMORY.md`, `USER.md`, `BACKLOG.md`, `REFERENCES.md`). |
 | `shell_execution` | Shell / Linux | Safe and effective execution of host shell commands with exit code and error handling. |
 | `skill_creator` | Meta / Self-Improvement | Autonomous formulation, validation, and saving of new reusable skills into the knowledge base. |
 
@@ -115,8 +115,10 @@ Gemini-Hermes features 8 modular procedures conforming to the `agentskills.io` s
 | `/project <id>` | Inspect detailed architectural state, notes, and task progress |
 | `/project_add <name> <path>` | Bookmark a new project into persistent state |
 | `/project_task <id> <task>` | Attach a new task or milestone to an indexed project |
-| `/memory` | Inspect `MEMORY.md` (long-term memory) and `USER.md` (user profile) |
-| `/memory_add <text>` | Manually save a permanent fact or instruction to memory |
+| `/memory` | Inspect modular memory domains (`MEMORY.md`, `USER.md`, `BACKLOG.md`, `REFERENCES.md`) |
+| `/memory_add <text>` | Manually save a permanent operational fact or rule to `MEMORY.md` |
+| `/task_add <task>` | Append an active task or inquiry directly to `BACKLOG.md` |
+| `/ref_add <title> \| <url>` | Save an external spreadsheet, documentation, or resource link to `REFERENCES.md` |
 | `/memory_reset` | Reset persistent memory to default initial state |
 | `/skills` | List all modular procedural skills currently installed |
 | `/skill <name>` | Display the exact instructions and metadata of a specific skill |
@@ -180,7 +182,7 @@ Run the comprehensive test suite to verify connectivity:
 ├── restart_bot.sh                 # Graceful lifecycle-aware daemon reloader
 ├── .env.example                   # Environment configuration template
 ├── gemini_hermes/
-│   ├── __init__.py                # Package version definition (v1.3.0)
+│   ├── __init__.py                # Package version definition (v1.3.8)
 │   ├── config.py                  # Settings loader & path constants
 │   ├── cli.py                     # CLI commands (start, setup, test, status)
 │   ├── brain/
@@ -194,14 +196,14 @@ Run the comprehensive test suite to verify connectivity:
 │   │   └── templates.py           # Default memory blueprints
 │   ├── skills/
 │   │   ├── manager.py             # Modular skill discovery and parser
-│   │   └── builtin/               # 9 Built-in procedural skills
+│   │   └── builtin/               # 8 Built-in procedural skills
 │   ├── persona/
-│   │   └── system_prompt.py       # Cognitive depth, Manager pattern & prompt builder
+│   │   └── system_prompt.py       # Cognitive depth & prompt builder
 │   └── gateway/
 │       ├── telegram_bot.py        # Gateway bot (polling, queues, /btw, status push)
 │       └── formatter.py           # Telegram Markdown formatting & sanitizers
 └── data/
-    ├── memory/                    # MEMORY.md and USER.md
+    ├── memory/                    # MEMORY.md, USER.md, BACKLOG.md, REFERENCES.md
     ├── projects/                  # projects.json (bookmarked projects)
     ├── sessions/                  # sessions.json (chat threads & metrics)
     ├── media/                     # Ingested Telegram photos and documents
