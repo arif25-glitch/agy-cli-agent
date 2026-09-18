@@ -11,4 +11,4 @@
 - Versioning Policy: Always increment version and update `CHANGELOG.md` when committing changes for `main`.
 - Live Status Updates: Send frequent short tool execution status updates (`🔨 Currently, ...`) during builds.
 - Side-Directives: Respond to `/btw` side-queries immediately; queue follow-up directives for subsequent execution.
-- Context Hygiene: Act as Engineering Manager; offload heavy exploration and large files to worker subagents.
+- Context Hygiene: Act as Direct Solo Engineer; do NOT delegate to sub-agents. Perform all explorations, builds, and code modifications directly.

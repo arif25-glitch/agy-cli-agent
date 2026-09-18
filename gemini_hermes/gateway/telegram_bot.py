@@ -528,12 +528,7 @@ class TelegramBot:
                         elapsed = int(time.time() - current_tool_start[0])
                         action = current_tool_name[0]
                         if elapsed >= 15:
-                            is_worker = "worker" in action.lower() or "subagent" in action.lower()
-                            pulse_text = (
-                                f"⏳ Worker subagent actively executing... ({elapsed}s elapsed)"
-                                if is_worker
-                                else f"⏳ Still executing: {action} ({elapsed}s elapsed)..."
-                            )
+                            pulse_text = f"⏳ Still executing: {action} ({elapsed}s elapsed)..."
                             await self.send_message(chat_id, pulse_text, parse_mode=None)
                 except asyncio.CancelledError:
                     break
@@ -617,66 +612,6 @@ class TelegramBot:
             )
 
             new_conv_id = (final_result and final_result.conversation_id) or conv_id
-
-            # Active Subagent Follow-Through Loop:
-            # If the engine paused at subagent invocation, auto-resume to receive subagent results
-            is_async_subagent_pending = (
-                "An asynchronous task is currently running in the background" in final_text
-                or "You will receive updates or completion notifications automatically" in final_text
-            )
-            max_subagent_followups = 3
-            followup_attempt = 0
-
-            while is_async_subagent_pending and followup_attempt < max_subagent_followups:
-                followup_attempt += 1
-                logger.info(f"Subagent pending detection (attempt {followup_attempt}/{max_subagent_followups}) for chat_id={chat_id}. Entering active follow-through...")
-                await self.send_message(
-                    chat_id,
-                    f"⏳ *Worker subagent dispatched and executing.* Monitoring active swarm (attempt {followup_attempt}/{max_subagent_followups})...",
-                )
-                await asyncio.sleep(4.0)
-
-                followup_prompt = (
-                    "A worker subagent is currently executing or has completed. "
-                    "Please wait for its message, synthesize its findings, and present the final executive response to the user."
-                )
-                accumulated_text = ""
-                final_result = None
-                target_conv = new_conv_id or conv_id
-                async for event in self.forwarder.forward_stream(followup_prompt, target_conv):
-                    if isinstance(event, TokenDelta):
-                        tool_active_event.clear()
-                        current_tool_start[0] = 0.0
-                        is_typing_active.set()
-                        accumulated_text += event.text
-                    elif isinstance(event, ToolExecutionUpdate):
-                        is_typing_active.clear()
-                        tool_active_event.set()
-                        current_tool_name[0] = event.action
-                        current_tool_start[0] = time.time()
-                        last_active_action = event.action
-                        now = time.time()
-                        if event.action != last_status_action and (now - last_status_time >= 1.2):
-                            last_status_time = now
-                            last_status_action = event.action
-                            await self.send_message(chat_id, f"🔨 Currently, {event.action}...", parse_mode=None)
-                    elif isinstance(event, ForwarderResult):
-                        is_typing_active.clear()
-                        tool_active_event.clear()
-                        current_tool_start[0] = 0.0
-                        final_result = event
-
-                final_text = (
-                    final_result.response
-                    if (final_result and final_result.response.strip())
-                    else accumulated_text
-                )
-                if final_result and final_result.conversation_id:
-                    new_conv_id = final_result.conversation_id
-                is_async_subagent_pending = (
-                    "An asynchronous task is currently running in the background" in final_text
-                    or "You will receive updates or completion notifications automatically" in final_text
-                )
 
             if final_result and final_result.status in ("ERROR", "TIMEOUT") and final_result.error:
                 final_text = humanize_error(final_result.error, last_action=last_active_action)

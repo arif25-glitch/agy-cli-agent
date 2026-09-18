@@ -26,5 +26,5 @@ Use this skill when auditing agent health, checking server resources, diagnosing
 - Look for repeating patterns (e.g. 400 Bad Request, rate limits, unhandled promise rejections).
 
 ### 4. Background Task Telemetry
-- Check active subagent or background task status.
+- Check active background task status.
 - Ensure orphaned processes are safely terminated before launching new build loops.

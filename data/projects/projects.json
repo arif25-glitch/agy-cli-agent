@@ -11,8 +11,7 @@
     "active_tasks": [
       "Proactive Self-Verification & Sanity Checking",
       "Project State Indexing",
-      "Modular Skills & Execution Arsenal",
-      "Smarter Multi-Agent Delegation Templates"
+      "Modular Skills & Execution Arsenal"
     ],
     "notes": "Primary agent daemon repository and orchestration core."
   },

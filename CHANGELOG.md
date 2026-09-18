@@ -5,6 +5,15 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.6] - 2026-09-18
+
+### Changed
+- **Decommissioned Subagent Delegation Across Engine**: Switched agent execution paradigm strictly to Direct Solo Execution mode.
+- **System Prompt & Persona Optimization**: Removed `Executive Manager Pattern & Context Hygiene (Worker Offloading)` and `Subagent Orchestration` sections from `HERMES_BASE_INSTRUCTIONS`, establishing explicit prohibition against invoking subagents.
+- **Skills Catalog Streamlined**: Completely removed `manager_delegation` procedural skill from builtin and runtime skill registries. Refactored `multi_step_researcher` and `system_monitor` skills to operate exclusively under direct single-agent execution.
+- **Memory & Rules Pruned**: Updated persistent memory (`MEMORY.md`) and user operational rules (`USER.md`) to decommission worker swarm directives and enforce hands-on execution.
+- **Gateway & Telemetry Simplification**: Removed asynchronous subagent follow-through loops and worker-specific status pulses from `TelegramBot` and `stream_parser`.
+
 ## [1.3.5] - 2026-09-18
 
 ### Fixed

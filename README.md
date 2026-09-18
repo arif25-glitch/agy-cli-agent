@@ -1,30 +1,23 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.3`
+# 🪐 Gemini-Hermes AI Agent `v1.3.6`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.3.3 Highlights:**
-> - **Sanitized Production Release Distribution**: `data/projects/projects.json` and default initialization sanitized for clean zero-leak open-source cloning; user bookmarks and scratch apps isolated to development branches.
-> - **Lean Persistent Memory Architecture**: Pruned `MEMORY.md` and `USER.md` from verbose narrative boilerplate down to dense, high-signal 1-line operational directives, cutting context token overhead by ~75%.
-> - **Automated Token Session Detection & Interactive Prompting**: If no active Antigravity CLI (`agy`) login session is detected, automatically scans candidate system paths or interactively prompts the user to paste their JSON token session, enter a file path, or run Google OAuth login directly.
-> - **Virtualenv Auto-Detection**: `run.sh` auto-detects local `.venv` environments, bypassing OS-level PEP 668 package restrictions smoothly.
-> - **Executive Manager Pattern & Context Hygiene**: Operates as an Engineering Manager, proactively offloading heavy file reads, deep web research, and verbose build logs to isolated subagents to keep the primary context pristine.
-> - **Project State Indexing**: Persistent project bookmarks (`data/projects/projects.json`) with zero context loss across sessions (`/projects`, `/project`, `/project_add`, `/project_task`).
-> - **`/btw` Side-Conversation & Task Queue**: Query live telemetry (`/btw where are you now?`) or queue follow-up directives without interrupting ongoing background operations.
-> - **Real-Time Execution Status ("Bomb Chat")**: Immediate tool action updates (`🔨 Currently, <action>...`) pushed directly to Telegram with sub-second responsiveness.
-> - **Proactive Self-Verification**: Mandatory sanity critique, syntax checks, and regression verification before finalizing complex responses.
-> - **9 Modular Procedural Skills**: Complete suite adhering to the `agentskills.io` standard.
+> **Release v1.3.6 Highlights:**
+> - **Direct Solo Execution Mode**: Decommissioned sub-agent delegation across prompt templates, skills, rules, and memory. Gemini-Hermes executes all commands, file edits, and diagnostics directly.
+> - **Subagent Prohibition**: Enforced strict single-agent context hygiene without subagent spawning, eliminating worker timeout overhead.
+> - **Modular Skills Arsenal**: Streamlined skills catalog down to 8 high-leverage core procedures adhering to the `agentskills.io` standard.
 
 ---
 
 ## 🏛️ Architecture Overview
 
-Gemini-Hermes follows an Executive Orchestrator body-brain design:
+Gemini-Hermes follows a Direct Autonomous Orchestrator body-brain design:
 
 ```mermaid
 flowchart TD
     User([Telegram User]) <-->|Messages, Media & /btw Commands| TG[Telegram Gateway\n(Long Polling / httpx / Formatter)]
     
-    subgraph Gemini-Hermes Core [Gemini-Hermes Executive Engine]
+    subgraph Gemini-Hermes Core [Gemini-Hermes Execution Engine]
         TG --> Router[Message Router & Concurrency Guard]
         Router --> Queue[Task Queue & /btw Dispatcher]
         Queue --> PromptEngine[Prompt & Persona Engine]
@@ -32,7 +25,7 @@ flowchart TD
         subgraph Persistent State Layer
             MemStore[(Memory Layer\nMEMORY.md & USER.md)]
             ProjStore[(Project State Index\ndata/projects/projects.json)]
-            Skills[(Skills Catalog\n9 Modular Procedures)]
+            Skills[(Skills Catalog\n8 Modular Procedures)]
             Sessions[(SessionDB\nTurn Metrics & History)]
         end
         
@@ -47,11 +40,6 @@ flowchart TD
     Forwarder <-->|Stream NDJSON / Turn IO| AGY[Antigravity CLI\n(agy -p ... --output-format stream-json)]
     AGY <--> LLM[Google Gemini 3.8 Flash / Pro Engine]
     
-    subgraph Sub-Agent Worker Swarm
-        AGY -.->|Spawn Isolated Workers| Workers[Sub-Agents\n(research / self)]
-        Workers -.->|Dense Executive Distillation| Forwarder
-    end
-    
     Forwarder -->|Real-Time Tool Actions & Status| TG
 ```
 
@@ -59,11 +47,10 @@ flowchart TD
 
 ## ✨ Core Features & Hermes Capabilities
 
-### 1. Executive Manager Pattern & Context Hygiene
-- **Manager vs. Worker Distinction**: Gemini-Hermes operates as an Engineering Manager rather than an individual grunt worker dumping massive raw context into the primary chat.
-- **Worker Offloading**: High-context operations (scanning repositories, reading large files, analyzing >50 lines of logs, web scraping) are automatically offloaded to isolated subagents (`research` or `self`).
-- **Dense Executive Synthesis**: Subagents absorb token churn in branched workspaces and return only dense, high-signal artifacts (architectural decisions, file diffs, test results).
-- **Pristine Primary Context**: Guards the main conversation against token bloat and context dilution, ensuring long-term memory and goal tracking remain sharp for weeks.
+### 1. Direct Solo Execution & Context Hygiene
+- **Direct Solo Execution**: Gemini-Hermes acts as a direct, hands-on engineer executing inspections, builds, tests, and file modifications directly in the session.
+- **Subagent Prohibition**: Eliminates sub-agent spawning and delegation loops, preventing worker timeouts and context desynchronization.
+- **Pristine Primary Context**: Guards the conversation against noise and token bloat with compact, high-signal reasoning traces.
 
 ### 2. Project State Indexing (Zero Context Loss)
 - **Persistent Project Bookmarks**: Tracks active and completed engineering projects in `data/projects/projects.json`.
@@ -95,13 +82,12 @@ flowchart TD
 
 ---
 
-## 🛠️ Modular Skills Catalog (9 Active Procedures)
+## 🛠️ Modular Skills Catalog (8 Active Procedures)
 
-Gemini-Hermes features 9 modular procedures conforming to the `agentskills.io` standard:
+Gemini-Hermes features 8 modular procedures conforming to the `agentskills.io` standard:
 
 | Skill | Category | Description |
 |---|---|---|
-| `manager_delegation` | Delegation / Manager | Procedure for offloading high-context tasks to worker subagents while keeping primary context pristine. |
 | `multi_step_researcher` | Research / Synthesis | Systematic multi-step technical web research, official docs triangulation, and dense synthesis. |
 | `auto_debugger` | Debugging / Diagnostics | Error log parsing, stack trace isolation, root cause hypothesis testing, and surgical patching. |
 | `api_tester` | API / Validation | Probing REST/HTTP endpoints, contract mapping, curl execution, and JSON schema validation. |

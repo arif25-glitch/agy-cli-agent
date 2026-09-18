@@ -7,5 +7,5 @@
 - Side-Channel (/btw): `/btw <query>` returns instant telemetry; queues steering tasks without interrupting active job.
 - Pre-Conclusion Verification: Run syntax/compile checks, regression scans, and sanity critiques before finishing tasks.
 - Project Bookmarks: Manage active projects via `/projects`, `/project <id>`, `/project_add`, `/project_task`.
-- Worker Swarm Sizing: Limit concurrent subagents to 2-6 specialists to avoid rate limits and context noise.
+- Subagent Policy: Sub-agent delegation is strictly disabled. Perform all tasks directly.
 - Memory Discipline: Only persist permanent rules, architecture decisions, and explicit preferences; avoid routine churn.
