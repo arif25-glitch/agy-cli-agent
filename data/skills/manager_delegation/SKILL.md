@@ -23,6 +23,8 @@ Immediately delegate to a worker sub-agent when:
 - **For Implementation & Build Scaffolding**:
   Spawn a `self` worker in an isolated branch:
   `invoke_subagent(TypeName="self", Role="Backend Feature Scaffolder", Workspace="branch", Prompt="Scaffold the models and database migration for Z, verify compilation, and return only the file diff list and test status.")`
+- **Optimal Fleet Sizing (2 to 6 Workers)**:
+  Technically, arbitrary sub-agents can be spawned, but operational best practice is targeted swarms of 2 to 6 specialists (e.g. Frontend Architect, Backend Developer, QA/Tester, Researcher). This prevents API rate limits, host resource contention, and synthesis noise.
 
 ### 3. Output Distillation & Context Hygiene
 - Workers MUST NOT dump verbose logs back to the Manager.
