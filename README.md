@@ -6,7 +6,7 @@
 > - **Modular Multi-Domain Memory Architecture**: Refactored `MemoryStore` into four distinct storage domains: `MEMORY.md` (operational standards), `USER.md` (user preferences and communication rules), `BACKLOG.md` (active task queue and operational inquiries), and `REFERENCES.md` (external spreadsheets, documentation, and links).
 > - **Direct Solo Execution & Hands-on Engineering**: Decommissioned sub-agent delegation loops across prompt templates, skills, rules, and memory. Gemini-Hermes executes all commands, file edits, diagnostics, and builds directly.
 > - **Daemon Singleton PID Lock**: Enforced atomic PID file locking in `cli.py` to prevent duplicate bot instances and ensure daemon safety across restarts.
-> - **Integrated Personalized Operational Profiles**: Preserved specialized user preferences, active project bookmarks, and task backlogs directly on `main`.
+> - **Sanitized Distribution Templates**: Provides clean generic starter templates for public deployment across all modular memory domains and projects.
 
 ---
 

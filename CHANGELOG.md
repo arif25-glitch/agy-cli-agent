@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Singleton PID File Lock**: Added atomic PID locking in `gemini_hermes/cli.py` to prevent duplicate bot instances and ensure clean daemon lifecycle during background restarts.
-- **Personalized Operational Profile on Main**: Integrated user preferences, direct engineering workflows, project bookmarks (`data/projects/projects.json`), active task backlogs, and external references directly into `main`.
+- **Sanitized Public Distribution**: Maintained clean, generic starter templates for `data/memory/` and `data/projects/projects.json` on `main`, isolating personal tasks, sheets, and scratch projects to development branches.
 
 ### Merged
 - **Modular Multi-Domain Memory Architecture**: Fully merged `MemoryStore` multi-domain persistence (`MEMORY.md`, `USER.md`, `BACKLOG.md`, `REFERENCES.md`) and `/task_add`, `/ref_add` gateway commands into `main`.
