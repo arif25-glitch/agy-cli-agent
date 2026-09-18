@@ -5,6 +5,14 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.5] - 2026-09-18
+
+### Fixed
+- **Subagent Delegation Timeouts & Stalls**: Added explicit `--print-timeout` flag to `AgyForwarder` (defaulting to 900s), eliminating the silent 5-minute CLI print-timeout drop during subagent execution.
+- **Active Subagent Follow-Through Loop**: Added automated detection of asynchronous subagent dispatch states in `TelegramBot`. Instead of prematurely terminating turns and abandoning conversations, the bot maintains active follow-through, awaiting and delivering worker syntheses directly to Telegram.
+- **Periodic Tool & Subagent Progress Heartbeat**: Added `tool_heartbeat` in `TelegramBot` that emits progress pulses every 15-20s during prolonged tool runs (e.g. subagents or heavy compilations), ensuring Telegram never goes dark.
+- **Subagent Velocity & Prompt Scoping**: Updated `manager_delegation` skill and `HERMES_BASE_INSTRUCTIONS` with strict 2-4 minute velocity boundaries (max 5-15 steps per worker) to prevent overloaded 100-step worker executions.
+
 ## [1.3.4] - 2026-09-18
 
 ### Added

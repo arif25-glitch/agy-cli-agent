@@ -23,8 +23,9 @@ Immediately delegate to a worker sub-agent when:
 - **For Implementation & Build Scaffolding**:
   Spawn a `self` worker in an isolated branch:
   `invoke_subagent(TypeName="self", Role="Backend Feature Scaffolder", Workspace="branch", Prompt="...")`
-- **Optimal Fleet Sizing (2 to 6 Workers)**:
-  Technically, arbitrary sub-agents can be spawned, but operational best practice is targeted swarms of 2 to 6 specialists (e.g. Frontend Architect, Backend Developer, QA/Tester, Researcher). This prevents API rate limits, host resource contention, and synthesis noise.
+- **Optimal Fleet Sizing & Execution Velocity (Target 2–4 Minutes)**:
+  Technically, arbitrary sub-agents can be spawned, but operational best practice is targeted swarms of 2 to 6 specialists (e.g. Frontend Architect, Backend Developer, QA/Tester, Researcher).
+  *Rule of Velocity*: Subagents MUST be given tightly scoped instructions targeting completion within 2–4 minutes (maximum 5–15 steps). Never dump an entire 10-file refactor into one subagent prompt.
 
 ### 3. Output Distillation & Context Hygiene
 - Workers MUST NOT dump verbose logs back to the Manager.
@@ -34,8 +35,9 @@ Immediately delegate to a worker sub-agent when:
   3. *Core Findings / Key Decisions*: 3–5 dense bullet points
   4. *Verification*: Pass/fail verification evidence
 
-### 4. Manager Synthesis & Long-Term Memory
-- The Manager reads the worker's distilled artifact.
+### 4. Active Orchestration & Completion (Anti-Abandonment)
+- The Manager remains actively engaged while workers execute. Never output generic waiting notices and exit.
+- The Manager ingests the worker's distilled artifact immediately upon return.
 - The Manager updates the project state (`ProjectManager`) and long-term memory (`MemoryStore`).
 - The Manager provides a crisp, high-level, actionable summary directly to the user in Telegram.
 - The primary context remains lean, sharp, and capable of weeks of continuous conversation.
