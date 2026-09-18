@@ -5,6 +5,14 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-09-18
+
+### Added
+- **Modular Multi-Domain Memory Architecture**: Refactored `MemoryStore` into four distinct storage domains: `MEMORY.md` (operational standards), `USER.md` (user preferences and communication rules), `BACKLOG.md` (active task queue and operational inquiries), and `REFERENCES.md` (external spreadsheets, documentation, and links).
+- **Telegram Gateway Memory Commands**: Added `/task_add <task>` to append items directly to `BACKLOG.md` and `/ref_add <title> | <url>` to record documentation and sheets in `REFERENCES.md`.
+- **Domain-Specific Prompt Context Injection**: Updated `render_memory_context` to inject structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) to optimize context hygiene and retrieval accuracy.
+- **Updated Memory Keeper Procedure**: Upgraded `memory_keeper` skill to v1.1.0 documenting best practices for multi-domain persistent memory.
+
 ## [1.3.6] - 2026-09-18
 
 ### Changed

@@ -176,8 +176,10 @@ class TelegramBot:
             f"💡 *Commands:*\n"
             f"• `/new` or `/reset` - Start a fresh conversation\n"
             f"• `/status` - Check agent health and statistics\n"
-            f"• `/memory` - Inspect persistent memory files\n"
+            f"• `/memory` - Inspect persistent memory modules (MEMORY, USER, BACKLOG, REFERENCES)\n"
             f"• `/memory_add <text>` - Save a permanent fact or instruction\n"
+            f"• `/task_add <task>` - Add a task to the active backlog\n"
+            f"• `/ref_add <title> | <url>` - Save an external link or sheet reference\n"
             f"• `/skills` - View all available modular skills\n"
             f"• `/skill <name>` - View skill procedure details\n"
             f"• `/exec <bash>` - Execute host shell command\n"
@@ -191,8 +193,10 @@ class TelegramBot:
             f"📚 *Gemini-Hermes Command Reference:*\n\n"
             f"• `/new` / `/reset` - Clears the current conversation thread and begins a fresh session.\n"
             f"• `/status` - Shows active conversation ID, turns, token metrics, and engine status.\n"
-            f"• `/memory` - Displays your current `MEMORY.md` and `USER.md` entries.\n"
-            f"• `/memory_add <note>` - Manually saves a new note to persistent long-term memory.\n"
+            f"• `/memory` - Displays all active persistent memory modules.\n"
+            f"• `/memory_add <note>` - Manually saves a new note to persistent operational memory.\n"
+            f"• `/task_add <task>` - Adds a task to the active backlog (`BACKLOG.md`).\n"
+            f"• `/ref_add <title> | <url>` - Saves an external link or sheet to references (`REFERENCES.md`).\n"
             f"• `/memory_reset` - Resets persistent memory to default initial state.\n"
             f"• `/skills` - Lists all modular procedural skills currently registered.\n"
             f"• `/skill <name>` - Displays the exact instructions and metadata of a skill.\n"
@@ -234,7 +238,20 @@ class TelegramBot:
     async def handle_memory(self, chat_id: int):
         mem = self.memory_store.get_long_term_memory().strip()
         usr = self.memory_store.get_user_profile().strip()
-        text = f"🧠 *Persistent Memory (`MEMORY.md`):*\n```markdown\n{mem[:1800]}\n```\n\n👤 *User Profile (`USER.md`):*\n```markdown\n{usr[:1800]}\n```"
+        backlog = self.memory_store.get_backlog().strip()
+        refs = self.memory_store.get_references().strip()
+
+        sections = []
+        if mem:
+            sections.append(f"🧠 *Operational Directives (`MEMORY.md`):*\n```markdown\n{mem[:800]}\n```")
+        if usr:
+            sections.append(f"👤 *User Profile (`USER.md`):*\n```markdown\n{usr[:800]}\n```")
+        if backlog:
+            sections.append(f"📋 *Task Backlog (`BACKLOG.md`):*\n```markdown\n{backlog[:800]}\n```")
+        if refs:
+            sections.append(f"🔗 *External References (`REFERENCES.md`):*\n```markdown\n{refs[:800]}\n```")
+
+        text = "\n\n".join(sections) if sections else "ℹ️ No memory files found."
         await self.send_message(chat_id, text)
 
     async def handle_memory_add(self, chat_id: int, note: str):
@@ -243,6 +260,23 @@ class TelegramBot:
             return
         self.memory_store.append_to_memory(note)
         await self.send_message(chat_id, f"✅ Successfully saved to persistent memory:\n`{note.strip()}`")
+
+    async def handle_task_add(self, chat_id: int, task: str):
+        if not task.strip():
+            await self.send_message(chat_id, "⚠️ Please provide a task: `/task_add <description>`")
+            return
+        self.memory_store.append_to_backlog(task)
+        await self.send_message(chat_id, f"✅ Successfully added to Task Backlog (`BACKLOG.md`):\n`{task.strip()}`")
+
+    async def handle_ref_add(self, chat_id: int, arg: str):
+        if not arg.strip() or "|" not in arg:
+            await self.send_message(chat_id, "⚠️ Please provide format: `/ref_add <title> | <url>`")
+            return
+        parts = arg.split("|", 1)
+        title = parts[0].strip()
+        url = parts[1].strip()
+        self.memory_store.append_to_references(title, url)
+        await self.send_message(chat_id, f"✅ Saved to References (`REFERENCES.md`):\n*{title}*: `{url}`")
 
     async def handle_skills(self, chat_id: int):
         skills = self.skill_manager.get_all_skills()
@@ -821,6 +855,10 @@ class TelegramBot:
                 await self.handle_memory(chat_id)
             elif cmd == "/memory_add":
                 await self.handle_memory_add(chat_id, arg)
+            elif cmd == "/task_add":
+                await self.handle_task_add(chat_id, arg)
+            elif cmd == "/ref_add":
+                await self.handle_ref_add(chat_id, arg)
             elif cmd == "/memory_reset":
                 self.memory_store.reset_long_term_memory()
                 await self.send_message(chat_id, "🧹 Long-term memory has been reset to defaults.")

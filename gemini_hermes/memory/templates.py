@@ -19,3 +19,21 @@ DEFAULT_USER_TEMPLATE = """# User Profile & Preferences
 ## User Specific Preferences & Context
 - (Learned preferences will be recorded here automatically)
 """
+
+DEFAULT_BACKLOG_TEMPLATE = """# Active Task Backlog & Operational Notes
+
+## Active Tasks
+- (Active tasks will be tracked here)
+
+## Operational Notes & Inquiries
+- (Operational questions or blockers will be listed here)
+"""
+
+DEFAULT_REFERENCES_TEMPLATE = """# External References & Resources
+
+## Sheets & Spreadsheets
+- (Spreadsheet links and datasets will be tracked here)
+
+## Documentation & API Endpoints
+- (API specs and external documentation links will be tracked here)
+"""
