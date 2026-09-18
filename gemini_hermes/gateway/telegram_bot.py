@@ -500,10 +500,14 @@ class TelegramBot:
         await self.send_chat_action(chat_id, "typing")
 
         stop_typing = asyncio.Event()
+        is_typing_active = asyncio.Event()
+        is_typing_active.set()  # Initially active while thinking
+
         async def _typing_heartbeat():
             while not stop_typing.is_set():
                 try:
-                    await self.send_chat_action(chat_id, "typing")
+                    if is_typing_active.is_set():
+                        await self.send_chat_action(chat_id, "typing")
                     await asyncio.wait_for(stop_typing.wait(), timeout=4.5)
                 except asyncio.TimeoutError:
                     pass
@@ -527,6 +531,7 @@ class TelegramBot:
         try:
             async for event in self.forwarder.forward_stream(full_prompt, conv_id):
                 if isinstance(event, TokenDelta):
+                    is_typing_active.set()
                     accumulated_text += event.text
                     now = time.time()
                     if (
@@ -542,6 +547,7 @@ class TelegramBot:
                             await self.edit_message_text(chat_id, placeholder_id, preview)
 
                 elif isinstance(event, ToolExecutionUpdate):
+                    is_typing_active.clear()
                     last_active_action = event.action
                     if chat_id in self._active_task_info:
                         self._active_task_info[chat_id]["last_action"] = event.action
@@ -566,6 +572,7 @@ class TelegramBot:
                         await self.send_message(chat_id, status_msg, parse_mode=None)
 
                 elif isinstance(event, ForwarderResult):
+                    is_typing_active.clear()
                     final_result = event
 
             # Generation finished

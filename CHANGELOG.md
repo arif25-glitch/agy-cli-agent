@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Worker Subagent Telemetry Transparency**: Enhanced `stream_parser` to extract worker role and specialist context from `invoke_subagent` calls (e.g. `🔨 Currently, worker (Next.js Frontend Engineer) - Scaffold Next.js project...`).
 - **Telemetry Disambiguation**: Clarified live execution updates so users immediately distinguish between primary manager orchestration and background subagent worker tasks.
+- **Typing Indicator State Synchronization**: Paused the Telegram `typing...` action when tools/worker subagents are executing, ensuring the typing indicator only displays when the agent is actively synthesizing response text.
 - **Bot Restart Script Integrity**: Fixed directory paths in `restart_bot.sh` to resolve to the active working root `/home/arif/agy-hermes`.
 
 ## [1.3.3] - 2026-09-18
