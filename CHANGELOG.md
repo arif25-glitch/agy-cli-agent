@@ -5,6 +5,15 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.7] - 2026-09-18
+
+### Changed
+- **Domain-Agnostic Core Foundation**: Standardized `main` branch to represent a versatile, domain-agnostic autonomous agent platform rather than an exclusively software-engineering focused persona.
+- **System Prompt Generalization**: Updated Section 5 (Proactive Self-Verification & Quality Checks) and Section 6 (Direct Solo Execution & Context Hygiene) in `HERMES_BASE_INSTRUCTIONS` to apply universally across research, analytical, and technical domains.
+- **Operational Directives Pruned**: Refactored `MEMORY.md` pre-conclusion verification directives to specify general sanity checks and consistency validation.
+- **Gateway & Formatter Generalization**: Updated Telegram `/help` natural conversation guidance and runtime error message hints in `formatter.py` to be domain-neutral.
+- **Skill Documentation Alignment**: Refactored `memory_keeper` skill metadata definitions for `USER.md` to reflect general user preferences and interests.
+
 ## [1.3.6] - 2026-09-18
 
 ### Changed

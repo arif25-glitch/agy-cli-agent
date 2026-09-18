@@ -1,11 +1,12 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.6`
+# 🪐 Gemini-Hermes AI Agent `v1.3.7`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.3.6 Highlights:**
-> - **Direct Solo Execution Mode**: Decommissioned sub-agent delegation across prompt templates, skills, rules, and memory. Gemini-Hermes executes all commands, file edits, and diagnostics directly.
-> - **Subagent Prohibition**: Enforced strict single-agent context hygiene without subagent spawning, eliminating worker timeout overhead.
-> - **Modular Skills Arsenal**: Streamlined skills catalog down to 8 high-leverage core procedures adhering to the `agentskills.io` standard.
+> **Release v1.3.7 Highlights:**
+> - **Domain-Agnostic Core Foundation**: Standardized `main` as a general-purpose, domain-agnostic autonomous platform. Preserved specialized engineering workflows for dedicated development branches.
+> - **Direct Solo Execution Mode**: Enforces single-agent context hygiene without subagent spawning, eliminating worker timeout overhead.
+> - **Universal Quality Verification**: Generalized proactive self-verification to validate deliverables across diverse research, analytical, and technical domains.
+> - **Modular Skills Arsenal**: Streamlined skills catalog of 8 core procedures adhering to the `agentskills.io` standard.
 
 ---
 
@@ -48,12 +49,12 @@ flowchart TD
 ## ✨ Core Features & Hermes Capabilities
 
 ### 1. Direct Solo Execution & Context Hygiene
-- **Direct Solo Execution**: Gemini-Hermes acts as a direct, hands-on engineer executing inspections, builds, tests, and file modifications directly in the session.
+- **Direct Solo Execution**: Gemini-Hermes acts as a direct, hands-on autonomous agent executing tasks, research, analyses, and workflows directly in the session.
 - **Subagent Prohibition**: Eliminates sub-agent spawning and delegation loops, preventing worker timeouts and context desynchronization.
 - **Pristine Primary Context**: Guards the conversation against noise and token bloat with compact, high-signal reasoning traces.
 
 ### 2. Project State Indexing (Zero Context Loss)
-- **Persistent Project Bookmarks**: Tracks active and completed engineering projects in `data/projects/projects.json`.
+- **Persistent Project Bookmarks**: Tracks active and completed projects in `data/projects/projects.json`.
 - **Context Injection**: Project state, paths, tech stacks, and open milestones are automatically surfaced in the cognitive system prompt.
 - **Commands**:
   - `/projects`: List all indexed projects with status, paths, and stack.
@@ -63,17 +64,17 @@ flowchart TD
 
 ### 3. Side-Conversation & Task Queue (`/btw`)
 - **Side-Quest / Live Telemetry**: Ask progress or status questions while a background task is running (e.g. `/btw where are you now?` or `/btw what are you working on?`). The bot replies instantly with live telemetry without interrupting the primary task.
-- **Steering & Task Queueing**: Send steering directives or follow-up tasks (e.g. `/btw remember to use Tailwind`, `/btw after this, write a README`). It queues the instruction into an automated FIFO queue.
+- **Steering & Task Queueing**: Send steering directives or follow-up tasks (e.g. `/btw remember to check sources`, `/btw after this, write a summary`). It queues the instruction into an automated FIFO queue.
 - **Autonomous Chaining**: Automatically dequeues and executes the queued task immediately once the active operation concludes.
 - **Commands**: `/btw <query>`, `/queue`, `/cancel`.
 
 ### 4. Real-Time Status Push ("Bomb Chat")
-- **Live Execution Feedback**: While executing multi-step tools or building projects, pushes immediate short status messages (`🔨 Currently, <action>...`) throttled at 1.2s.
+- **Live Execution Feedback**: While executing multi-step tools or long tasks, pushes immediate short status messages (`🔨 Currently, <action>...`) throttled at 1.2s.
 - **Clean Chat Lifecycle**: The initial thinking placeholder is automatically deleted on the first tool action, keeping the chat clean and responsive.
-- **Extended Ceilings**: 300-second (5 min) inactivity reset on output, with a 900-second (15 min) overall ceiling for heavy dependency builds.
+- **Extended Ceilings**: 300-second (5 min) inactivity reset on output, with a 900-second (15 min) overall ceiling for heavy operations.
 
 ### 5. Proactive Self-Verification
-- Automatically executes internal sanity checks, syntax compilation tests, import validations, and regression analyses before finalizing complex multi-step responses.
+- Automatically executes internal sanity checks, consistency reviews, and quality validation before finalizing complex multi-step responses.
 
 ### 6. Persistent Long-Term Memory (`MEMORY.md` & `USER.md`)
 - **Continuous Memory**: Retains facts, project knowledge, user preferences, and configuration details across restarts.

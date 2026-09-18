@@ -9,7 +9,7 @@ tags: [memory, persistence, context]
 
 Gemini-Hermes maintains persistent state across sessions. Use this procedure to ensure memory stays relevant and compact:
 1. **Differentiate Memory Types**:
-   - `USER.md`: User identity, background, coding styles, language preferences, project goals.
+   - `USER.md`: User identity, background, preferences, communication style, domains of interest, project goals.
    - `MEMORY.md`: Long-term operational knowledge, environment facts, server paths, completed milestones, key rules.
 2. **When to Update**:
    - When the user explicitly asks you to remember something ("remember that...", "note down...").

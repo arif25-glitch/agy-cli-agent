@@ -121,11 +121,11 @@ def humanize_error(error_str: str, context: str = "", last_action: str = "") -> 
             "The model engine took longer than expected to complete the current operation.\n"
             f"{last_step_info}\n"
             "*Why this happens:*\n"
-            "• Heavy tasks (such as scaffolding, dependency installations, or extensive file builds) can pause output while processing.\n"
+            "• Heavy tasks (such as deep data retrieval, large workspace generation, or long-running executions) can pause output while processing.\n"
             "• If no output is detected for 5 minutes (or 15 minutes total ceiling), the forwarder safely stops to avoid hanging indefinitely.\n\n"
             "*How to continue:*\n"
             "1. Type `/status` to inspect current system state and thread ID.\n"
-            "2. If files were partially created, ask me to 'continue the build' to pick up right where I left off.\n"
+            "2. If an operation was partially completed, ask me to 'continue' or resume right where I left off.\n"
             "3. Type `/reset` if you would like to clear the conversation and start with a fresh thread."
         )
 

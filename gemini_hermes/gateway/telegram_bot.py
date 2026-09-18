@@ -207,7 +207,7 @@ class TelegramBot:
             f"• `/help` - Displays this menu.\n\n"
             f"💬 *Natural Conversation:*\n"
             f"You can also ask me directly to learn new skills, recall previous discussions, "
-            f"write code, debug problems, and run multi-step workflows."
+            f"research topics, analyze complex problems, and run multi-step workflows."
         )
         await self.send_message(chat_id, text)
 
