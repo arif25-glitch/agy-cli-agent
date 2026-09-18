@@ -159,10 +159,44 @@ async def run_diagnostics():
     print("\nDiagnostics complete!\n")
 
 
+PID_FILE = BASE_DIR / "gemini-hermes.pid"
+
+
+def acquire_pid_lock() -> bool:
+    if PID_FILE.exists():
+        try:
+            old_pid = int(PID_FILE.read_text().strip())
+            if old_pid != os.getpid():
+                os.kill(old_pid, 0)
+                print(f"❌ Error: Another instance of Gemini-Hermes is already running (PID {old_pid}).")
+                logger.error(f"Duplicate instance rejected: PID {old_pid} is active.")
+                return False
+        except (OSError, ValueError):
+            pass
+    try:
+        PID_FILE.write_text(str(os.getpid()), encoding="utf-8")
+    except Exception as e:
+        logger.warning(f"Could not write PID file: {e}")
+    return True
+
+
+def release_pid_lock():
+    try:
+        if PID_FILE.exists():
+            current_pid = int(PID_FILE.read_text().strip())
+            if current_pid == os.getpid():
+                PID_FILE.unlink(missing_ok=True)
+    except Exception:
+        pass
+
+
 async def start_bot():
     if not config.bot_token:
         print("❌ Error: TELEGRAM_BOT_TOKEN is not set.")
         print("Please run setup first: python3 -m gemini_hermes.cli setup")
+        sys.exit(1)
+
+    if not acquire_pid_lock():
         sys.exit(1)
 
     if not has_valid_token_session():
@@ -170,15 +204,20 @@ async def start_bot():
             print("⚠️ No active Antigravity CLI login token session found.")
             if not ensure_login_token_session(interactive=True, agy_bin=config.agy_bin):
                 print("❌ Error: Valid login token session is required to start Gemini-Hermes.")
+                release_pid_lock()
                 sys.exit(1)
         else:
             token_path = get_default_token_path()
             print(f"❌ Error: No active Antigravity CLI login token session found at {token_path}.")
             print("Please run setup first: ./run.sh setup (or run ./run.sh start interactively).")
+            release_pid_lock()
             sys.exit(1)
 
-    bot = TelegramBot()
-    await bot.run()
+    try:
+        bot = TelegramBot()
+        await bot.run()
+    finally:
+        release_pid_lock()
 
 
 def main():
