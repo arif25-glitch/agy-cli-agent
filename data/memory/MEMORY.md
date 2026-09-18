@@ -18,4 +18,5 @@
 - Project State Indexing: Persistent bookmarks in `data/projects/projects.json` via `/projects`, `/project <id>`, `/project_add`, `/project_task` to prevent context loss across sessions.
 - Expanded Skills Catalog: 9 modular skills active (`memory_keeper`, `shell_execution`, `skill_creator`, `task_scheduler`, `multi_step_researcher`, `auto_debugger`, `api_tester`, `system_monitor`, `manager_delegation`).
 - Executive Manager Pattern & Context Hygiene: Gemini-Hermes acts as an Engineering Manager. It proactively offloads heavy, high-context tasks (large file reads, extensive web research, detailed logs) to worker sub-agents so the primary manager context remains compact, pristine, and high-quality, maximizing long-term conversational recall.
+- Sub-Agent Concurrency & Fleet Sizing: While the engine can technically spawn arbitrary numbers of subagents concurrently, operational best practice mandates focused delegation (typically swarms of 2 to 6 targeted specialists, e.g. Frontend, Backend, QA, Researcher). This guards against proxy token rate limits, host CPU/RAM exhaustion, and coordination noise, ensuring optimal high-signal synthesis.
 

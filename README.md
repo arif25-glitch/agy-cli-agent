@@ -1,4 +1,4 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.0`
+# 🪐 Gemini-Hermes AI Agent `v1.3.1`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 

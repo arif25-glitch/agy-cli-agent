@@ -19,10 +19,12 @@ Immediately delegate to a worker sub-agent when:
 ### 2. Spawning the Right Worker Archetype
 - **For Research & Discovery**:
   Spawn a `research` subagent:
-  `invoke_subagent(TypeName="research", Role="Technical Codebase Researcher", Prompt="Explore X and find the exact functions responsible for Y. Return a dense 4-bullet summary with file paths and line numbers.")`
+  `invoke_subagent(TypeName="research", Role="Technical Codebase Researcher", Prompt="...")`
 - **For Implementation & Build Scaffolding**:
   Spawn a `self` worker in an isolated branch:
-  `invoke_subagent(TypeName="self", Role="Backend Feature Scaffolder", Workspace="branch", Prompt="Scaffold the models and database migration for Z, verify compilation, and return only the file diff list and test status.")`
+  `invoke_subagent(TypeName="self", Role="Backend Feature Scaffolder", Workspace="branch", Prompt="...")`
+- **Optimal Fleet Sizing (2 to 6 Workers)**:
+  Technically, arbitrary sub-agents can be spawned, but operational best practice is targeted swarms of 2 to 6 specialists (e.g. Frontend Architect, Backend Developer, QA/Tester, Researcher). This prevents API rate limits, host resource contention, and synthesis noise.
 
 ### 3. Output Distillation & Context Hygiene
 - Workers MUST NOT dump verbose logs back to the Manager.

@@ -5,6 +5,12 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-09-18
+ 
+### Added
+- **Sub-Agent Fleet Sizing & Concurrency Rules**: Codified optimal swarm fleet sizing boundaries (2 to 6 targeted specialists, e.g. Frontend Architect, Backend Developer, QA/Tester, Deep Researcher) into persistent memory (`MEMORY.md`), user preferences (`USER.md`), and the `manager_delegation` procedural skill (`SKILL.md`).
+- **Resource & Token Protection**: Prevents proxy model token rate-limiting, host CPU/RAM exhaustion, and coordination signal dilution during complex parallel multi-agent orchestrations.
+
 ## [1.3.0] - 2026-09-18
 
 ### Added
