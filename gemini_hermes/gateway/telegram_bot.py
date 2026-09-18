@@ -8,6 +8,7 @@ import httpx
 from gemini_hermes.config import config
 from gemini_hermes.memory.store import MemoryStore
 from gemini_hermes.skills.manager import SkillManager
+from gemini_hermes.projects.manager import ProjectManager
 from gemini_hermes.persona.system_prompt import build_system_prompt
 from gemini_hermes.brain.agy_forwarder import AgyForwarder
 from gemini_hermes.brain.stream_parser import TokenDelta, ForwarderResult, ToolExecutionUpdate
@@ -27,12 +28,14 @@ class TelegramBot:
         token: Optional[str] = None,
         memory_store: Optional[MemoryStore] = None,
         skill_manager: Optional[SkillManager] = None,
+        project_manager: Optional[ProjectManager] = None,
         forwarder: Optional[AgyForwarder] = None,
     ):
         self.token = token or config.bot_token
         self.api_url = f"https://api.telegram.org/bot{self.token}"
         self.memory_store = memory_store or MemoryStore()
         self.skill_manager = skill_manager or SkillManager()
+        self.project_manager = project_manager or ProjectManager()
         self.forwarder = forwarder or AgyForwarder()
         self.media_dir = os.path.join(config.workspace_dir, "data", "media")
         os.makedirs(self.media_dir, exist_ok=True)
@@ -193,6 +196,10 @@ class TelegramBot:
             f"• `/memory_reset` - Resets persistent memory to default initial state.\n"
             f"• `/skills` - Lists all modular procedural skills currently registered.\n"
             f"• `/skill <name>` - Displays the exact instructions and metadata of a skill.\n"
+            f"• `/projects` - List all bookmarked projects and their state.\n"
+            f"• `/project <id>` - Inspect detailed state, tasks, and tech stack of a project.\n"
+            f"• `/project_add <name> <path>` - Bookmark a new active project into persistent state.\n"
+            f"• `/project_task <id> <task>` - Add a new task or milestone to a project.\n"
             f"• `/btw <note/query>` - Ask a side question, steer, or queue a task while an operation is running.\n"
             f"• `/queue` - View active task and pending /btw queue.\n"
             f"• `/cancel` - Abort the active background task and clear the queue.\n"
@@ -219,6 +226,7 @@ class TelegramBot:
             f"• *Session Turns:* `{sess.get('turn_count', 0)}`\n"
             f"• *Tokens Used:* ~{sess.get('total_input_tokens', 0) + sess.get('total_output_tokens', 0):,}\n"
             f"• *Registered Skills:* `{len(self.skill_manager.get_all_skills())}`\n"
+            f"• *Indexed Projects:* `{len(self.project_manager.list_projects())}`\n"
             f"• *Memory File:* `data/memory/MEMORY.md`"
         )
         await self.send_message(chat_id, text)
@@ -261,6 +269,75 @@ class TelegramBot:
             f"```markdown\n{skill.instructions[:3500]}\n```"
         )
         await self.send_message(chat_id, text)
+
+    async def handle_projects(self, chat_id: int):
+        projects = self.project_manager.list_projects()
+        if not projects:
+            await self.send_message(
+                chat_id,
+                "📁 No projects currently indexed. Use `/project_add <name> <path>` to bookmark one."
+            )
+            return
+
+        lines = ["📁 *Indexed Projects (Persistent State):*\n"]
+        for p in projects:
+            lines.append(p.to_summary() + "\n")
+        lines.append("Use `/project <id>` to inspect detailed state and tasks.")
+        await self.send_message(chat_id, "\n".join(lines))
+
+    async def handle_project_detail(self, chat_id: int, identifier: str):
+        if not identifier.strip():
+            await self.handle_projects(chat_id)
+            return
+
+        project = self.project_manager.get_project(identifier.strip())
+        if not project:
+            await self.send_message(chat_id, f"⚠️ Project `{identifier}` not found. Type `/projects` to list active projects.")
+            return
+
+        tasks_str = "\n".join(f"  {i+1}. {t}" for i, t in enumerate(project.active_tasks)) if project.active_tasks else "  (No pending tasks)"
+        text = (
+            f"📁 *Project:* `{project.name}` (`{project.id}`)\n"
+            f"• *Status:* `{project.status}`\n"
+            f"• *Path:* `{project.path}`\n"
+            f"• *Tech Stack:* `{project.tech_stack or 'None'}`\n"
+            f"• *Last Worked On:* `{project.last_worked_on[:19]}`\n\n"
+            f"📝 *Description:*\n_{project.description or 'No description provided.'}_\n\n"
+            f"📋 *Active Tasks:*\n{tasks_str}\n\n"
+            f"💡 *Notes:*\n```\n{project.notes or 'No notes recorded.'}\n```"
+        )
+        await self.send_message(chat_id, text)
+
+    async def handle_project_add(self, chat_id: int, arg_str: str):
+        parts = arg_str.strip().split(maxsplit=2)
+        if len(parts) < 2:
+            await self.send_message(chat_id, "⚠️ Usage: `/project_add <name> <path> [description]`")
+            return
+        name = parts[0]
+        path = parts[1]
+        desc = parts[2] if len(parts) > 2 else ""
+        proj = self.project_manager.bookmark_project(name=name, path=path, description=desc)
+        await self.send_message(
+            chat_id,
+            f"✅ *Successfully bookmarked project:*\n"
+            f"• Name: `{proj.name}`\n"
+            f"• ID: `{proj.id}`\n"
+            f"• Path: `{proj.path}`\n\n"
+            f"Type `/project {proj.id}` to view details."
+        )
+
+    async def handle_project_task(self, chat_id: int, arg_str: str):
+        parts = arg_str.strip().split(maxsplit=1)
+        if len(parts) < 2:
+            await self.send_message(chat_id, "⚠️ Usage: `/project_task <project_id> <task description>`")
+            return
+        pid = parts[0]
+        task_desc = parts[1]
+        proj = self.project_manager.add_task(pid, task_desc)
+        if not proj:
+            await self.send_message(chat_id, f"⚠️ Project `{pid}` not found. Use `/projects` to list.")
+            return
+        await self.send_message(chat_id, f"✅ Added task to *{proj.name}*:\n• `{task_desc}`")
 
     async def handle_exec(self, chat_id: int, command: str):
         if not command.strip():
@@ -407,8 +484,13 @@ class TelegramBot:
         sess = self.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
 
-        # Build prompt with Hermes cognitive persona, memory, skills
-        system_prompt = build_system_prompt(self.memory_store, self.skill_manager, chat_id)
+        # Build prompt with Hermes cognitive persona, memory, skills, and project index
+        system_prompt = build_system_prompt(
+            self.memory_store,
+            self.skill_manager,
+            project_manager=self.project_manager,
+            current_chat_id=chat_id,
+        )
         full_prompt = (
             f"{system_prompt}\n\n"
             f"### User Message\n{user_text}\n\n"
@@ -707,6 +789,14 @@ class TelegramBot:
                 await self.handle_skills(chat_id)
             elif cmd == "/skill":
                 await self.handle_skill_detail(chat_id, arg)
+            elif cmd == "/projects":
+                await self.handle_projects(chat_id)
+            elif cmd == "/project":
+                await self.handle_project_detail(chat_id, arg)
+            elif cmd == "/project_add":
+                await self.handle_project_add(chat_id, arg)
+            elif cmd == "/project_task":
+                await self.handle_project_task(chat_id, arg)
             elif cmd == "/exec":
                 await self.handle_exec(chat_id, arg)
             else:

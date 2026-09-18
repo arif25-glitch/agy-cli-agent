@@ -5,6 +5,24 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-09-18
+
+### Added
+- **Executive Manager Pattern & Context Hygiene**: Formalized Engineering Manager cognitive architecture where high-context tasks (large file reading, deep documentation exploration, verbose build logs) are proactively offloaded to worker sub-agents (`research` or `self`). The primary context stays compact, pristine, and high-quality, maximizing long-term conversational memory.
+- **`manager_delegation` Skill**: Modular procedure for offloading high-context exploration, heavy file builds, and log analysis to worker sub-agents with dense executive synthesis.
+- **Project State Indexing**: Persistent project state bookmarks in `data/projects/projects.json` via `ProjectManager`, injected directly into the cognitive system prompt to prevent context loss across sessions.
+- **Telegram Project Management Commands**:
+  - `/projects`: List all indexed projects, tech stacks, and active tasks.
+  - `/project <id>`: Inspect detailed state, notes, and task progress of a project.
+  - `/project_add <name> <path> [desc]`: Bookmark a new project into persistent state.
+  - `/project_task <id> <task>`: Attach a milestone or task to an indexed project.
+- **Expanded Skills Catalog**: Registered 4 new procedural skills:
+  - `multi_step_researcher`: Systematic technical web research and documentation triangulation.
+  - `auto_debugger`: Error isolation, stack trace parsing, and surgical patch verification.
+  - `api_tester`: REST/HTTP contract validation, curl testing, and schema validation.
+  - `system_monitor`: System resources, memory/disk checks, and daemon health audit.
+- **Process Lifecycle Detection in Restart**: `restart_bot.sh` now monitors and waits for active `agy` execution to conclude and deliver Telegram messages before gracefully reloading daemon processes.
+
 ## [1.2.0] - 2026-09-18
 
 ### Added
