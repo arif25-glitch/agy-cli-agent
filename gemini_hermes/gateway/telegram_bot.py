@@ -503,6 +503,10 @@ class TelegramBot:
         is_typing_active = asyncio.Event()
         is_typing_active.set()  # Initially active while thinking
 
+        tool_active_event = asyncio.Event()
+        current_tool_name = [""]
+        current_tool_start = [0.0]
+
         async def _typing_heartbeat():
             while not stop_typing.is_set():
                 try:
@@ -514,7 +518,25 @@ class TelegramBot:
                 except Exception:
                     break
 
+        async def _tool_heartbeat():
+            while not stop_typing.is_set():
+                try:
+                    await asyncio.sleep(15.0)
+                    if stop_typing.is_set():
+                        break
+                    if tool_active_event.is_set() and current_tool_start[0] > 0:
+                        elapsed = int(time.time() - current_tool_start[0])
+                        action = current_tool_name[0]
+                        if elapsed >= 15:
+                            pulse_text = f"⏳ Still executing: {action} ({elapsed}s elapsed)..."
+                            await self.send_message(chat_id, pulse_text, parse_mode=None)
+                except asyncio.CancelledError:
+                    break
+                except Exception as e:
+                    logger.debug(f"Tool heartbeat error: {e}")
+
         typing_task = asyncio.create_task(_typing_heartbeat())
+        tool_heartbeat_task = asyncio.create_task(_tool_heartbeat())
 
         placeholder_id: Optional[int] = None
         if config.stream_updates:
@@ -531,6 +553,8 @@ class TelegramBot:
         try:
             async for event in self.forwarder.forward_stream(full_prompt, conv_id):
                 if isinstance(event, TokenDelta):
+                    tool_active_event.clear()
+                    current_tool_start[0] = 0.0
                     is_typing_active.set()
                     accumulated_text += event.text
                     now = time.time()
@@ -548,6 +572,9 @@ class TelegramBot:
 
                 elif isinstance(event, ToolExecutionUpdate):
                     is_typing_active.clear()
+                    tool_active_event.set()
+                    current_tool_name[0] = event.action
+                    current_tool_start[0] = time.time()
                     last_active_action = event.action
                     if chat_id in self._active_task_info:
                         self._active_task_info[chat_id]["last_action"] = event.action
@@ -573,6 +600,8 @@ class TelegramBot:
 
                 elif isinstance(event, ForwarderResult):
                     is_typing_active.clear()
+                    tool_active_event.clear()
+                    current_tool_start[0] = 0.0
                     final_result = event
 
             # Generation finished
@@ -581,6 +610,8 @@ class TelegramBot:
                 if (final_result and final_result.response.strip())
                 else accumulated_text
             )
+
+            new_conv_id = (final_result and final_result.conversation_id) or conv_id
 
             if final_result and final_result.status in ("ERROR", "TIMEOUT") and final_result.error:
                 final_text = humanize_error(final_result.error, last_action=last_active_action)
@@ -591,7 +622,6 @@ class TelegramBot:
                     final_text = humanize_error("Empty response received from engine.", last_action=last_active_action)
 
             # Update session stats
-            new_conv_id = (final_result and final_result.conversation_id) or conv_id
             in_tok = final_result.input_tokens if final_result else 0
             out_tok = final_result.output_tokens if final_result else 0
             self.memory_store.update_session(
@@ -634,6 +664,8 @@ class TelegramBot:
             stop_typing.set()
             if not typing_task.done():
                 typing_task.cancel()
+            if not tool_heartbeat_task.done():
+                tool_heartbeat_task.cancel()
             self._active_tasks.pop(chat_id, None)
             self._active_task_info.pop(chat_id, None)
 

@@ -69,24 +69,6 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
                 action = "inspecting project directory"
             elif tool_name in ("find_by_name", "grep_search", "search_code"):
                 action = "searching project files"
-            elif tool_name in ("invoke_subagent", "spawn_subagent"):
-                subagents_raw = params.get("Subagents") or []
-                if isinstance(subagents_raw, str):
-                    try:
-                        subagents_raw = json.loads(subagents_raw)
-                    except Exception:
-                        subagents_raw = []
-                if isinstance(subagents_raw, list) and subagents_raw:
-                    first_sub = subagents_raw[0] if isinstance(subagents_raw[0], dict) else {}
-                    worker_role = first_sub.get("Role") or first_sub.get("TypeName")
-                
-                custom_summary = params.get("toolSummary") or params.get("toolAction")
-                if worker_role and custom_summary:
-                    action = f"worker ({worker_role}) - {custom_summary}"
-                elif worker_role:
-                    action = f"delegating task to worker subagent ({worker_role})"
-                else:
-                    action = "delegating task to sub-agent worker"
             elif not action:
                 action = f"executing {tool_name}"
             else:

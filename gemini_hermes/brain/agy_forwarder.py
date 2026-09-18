@@ -30,7 +30,8 @@ class AgyForwarder:
             else config.dangerously_skip_permissions
         )
 
-    def _build_command(self, prompt: str, conversation_id: Optional[str] = None) -> list:
+    def _build_command(self, prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None) -> list:
+        total_timeout = int(timeout or getattr(config, "forwarder_timeout", 900.0))
         cmd = [
             self.agy_bin,
             "-p",
@@ -39,6 +40,8 @@ class AgyForwarder:
             "stream-json",
             "--effort",
             self.reasoning_effort,
+            "--print-timeout",
+            f"{total_timeout}s",
         ]
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
@@ -109,10 +112,10 @@ class AgyForwarder:
     async def forward_stream(
         self, prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
     ) -> AsyncGenerator[Union[TokenDelta, ThinkingDelta, ToolExecutionUpdate, ForwarderResult], None]:
-        cmd = self._build_command(prompt, conversation_id)
-        logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id})...")
-
         max_total_timeout = timeout or getattr(config, "forwarder_timeout", 900.0)
+        cmd = self._build_command(prompt, conversation_id, timeout=max_total_timeout)
+        logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id}, timeout={max_total_timeout}s)...")
+
         inactivity_timeout = getattr(config, "inactivity_timeout", 300.0)
         start_time = asyncio.get_event_loop().time()
         last_activity_time = asyncio.get_event_loop().time()

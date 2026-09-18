@@ -2,7 +2,7 @@
 name: multi_step_researcher
 description: Systematic procedure for multi-step web research, technical documentation exploration, source triangulation, and dense executive synthesis.
 version: 1.0.0
-tags: [research, web, documentation, synthesis, delegation]
+tags: [research, web, documentation, synthesis]
 ---
 
 # Multi-Step Researcher Procedure
@@ -18,11 +18,9 @@ Use this skill when investigating technical topics, third-party libraries, break
 - Triangulate facts: cross-reference at least two independent sources or verify against real code implementations.
 - Read full contents via URL fetching or repo file exploration rather than relying solely on search snippets.
 
-### 3. Sub-Agent Delegation Pattern (For Heavy Research)
-- When research requires examining multiple lengthy documentation pages or repositories:
-  Spawn an isolated `research` subagent:
-  `invoke_subagent(Role="Technical Docs Researcher", Prompt="Investigate X in library Y and return a dense 5-bullet summary...")`
-- Keeps parent execution context clean and avoids token bloat.
+### 3. Direct Targeted Inspection
+- Directly extract and inspect relevant sections of documentation or source code.
+- Avoid context bloat by focusing strictly on the relevant APIs, error signatures, or configurations.
 
 ### 4. Dense Executive Synthesis
 - Structure the findings into:
