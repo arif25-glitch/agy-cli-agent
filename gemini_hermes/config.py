@@ -8,6 +8,7 @@ DATA_DIR = BASE_DIR / "data"
 MEMORY_DIR = DATA_DIR / "memory"
 SESSIONS_DIR = DATA_DIR / "sessions"
 SKILLS_DIR = DATA_DIR / "skills"
+PROJECTS_DIR = DATA_DIR / "projects"
 
 
 def _load_env_file(filepath: Path):
@@ -30,7 +31,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.2.0"
+    app_version: str = "1.3.0"
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
         default_factory=lambda: [
