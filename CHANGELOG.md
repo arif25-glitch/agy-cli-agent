@@ -5,6 +5,13 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.4] - 2026-09-18
+
+### Added
+- **Worker Subagent Telemetry Transparency**: Enhanced `stream_parser` to extract worker role and specialist context from `invoke_subagent` calls (e.g. `🔨 Currently, worker (Next.js Frontend Engineer) - Scaffold Next.js project...`).
+- **Telemetry Disambiguation**: Clarified live execution updates so users immediately distinguish between primary manager orchestration and background subagent worker tasks.
+- **Bot Restart Script Integrity**: Fixed directory paths in `restart_bot.sh` to resolve to the active working root `/home/arif/agy-hermes`.
+
 ## [1.3.3] - 2026-09-18
 
 ### Changed

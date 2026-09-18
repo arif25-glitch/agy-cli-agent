@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Union
+import json
 
 
 @dataclass
@@ -16,6 +17,7 @@ class ThinkingDelta:
 class ToolExecutionUpdate:
     tool_name: str
     action: str
+    worker_role: Optional[str] = None
 
 
 @dataclass
@@ -46,6 +48,7 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
             params = tool_info.get("parameters", {}) if isinstance(tool_info, dict) else {}
 
             action = su.get("tool_action") or params.get("toolAction") or params.get("toolSummary")
+            worker_role = None
             if tool_name in ("write_to_file", "write_file"):
                 tgt = params.get("TargetFile") or params.get("target_file") or params.get("file_path") or ""
                 fname = tgt.split("/")[-1] if tgt else ""
@@ -67,14 +70,30 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
             elif tool_name in ("find_by_name", "grep_search", "search_code"):
                 action = "searching project files"
             elif tool_name in ("invoke_subagent", "spawn_subagent"):
-                action = "delegating task to sub-agent worker"
+                subagents_raw = params.get("Subagents") or []
+                if isinstance(subagents_raw, str):
+                    try:
+                        subagents_raw = json.loads(subagents_raw)
+                    except Exception:
+                        subagents_raw = []
+                if isinstance(subagents_raw, list) and subagents_raw:
+                    first_sub = subagents_raw[0] if isinstance(subagents_raw[0], dict) else {}
+                    worker_role = first_sub.get("Role") or first_sub.get("TypeName")
+                
+                custom_summary = params.get("toolSummary") or params.get("toolAction")
+                if worker_role and custom_summary:
+                    action = f"worker ({worker_role}) - {custom_summary}"
+                elif worker_role:
+                    action = f"delegating task to worker subagent ({worker_role})"
+                else:
+                    action = "delegating task to sub-agent worker"
             elif not action:
                 action = f"executing {tool_name}"
             else:
                 # Strip markdown ticks or asterisks from existing action text
                 action = str(action).replace("`", "").replace("*", "").strip()
 
-            return ToolExecutionUpdate(tool_name=tool_name, action=action)
+            return ToolExecutionUpdate(tool_name=tool_name, action=action, worker_role=worker_role)
 
     elif event_type == "result":
         res = data.get("result", {})

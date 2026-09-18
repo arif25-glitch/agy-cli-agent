@@ -13,7 +13,7 @@ if [ -n "$old_pids" ]; then
 fi
 sleep 1
 
-cd /gemini-hermes
-export PYTHONPATH="/gemini-hermes:$PYTHONPATH"
-python3 -m gemini_hermes.cli start >> /gemini-hermes/gemini-hermes.log 2>&1 &
-echo $! > /gemini-hermes/gemini-hermes.pid
+cd /home/arif/agy-hermes
+export PYTHONPATH="/home/arif/agy-hermes:$PYTHONPATH"
+python3 -m gemini_hermes.cli start >> /home/arif/agy-hermes/gemini-hermes.log 2>&1 &
+echo $! > /home/arif/agy-hermes/gemini-hermes.pid
