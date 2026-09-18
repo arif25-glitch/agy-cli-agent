@@ -30,7 +30,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.1.0"
+    app_version: str = "1.2.0"
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
         default_factory=lambda: [
