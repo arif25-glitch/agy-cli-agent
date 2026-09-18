@@ -1,8 +1,10 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.2`
+# 🪐 Gemini-Hermes AI Agent `v1.3.3`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.3.2 Highlights:**
+> **Release v1.3.3 Highlights:**
+> - **Sanitized Production Release Distribution**: `data/projects/projects.json` and default initialization sanitized for clean zero-leak open-source cloning; user bookmarks and scratch apps isolated to development branches.
+> - **Lean Persistent Memory Architecture**: Pruned `MEMORY.md` and `USER.md` from verbose narrative boilerplate down to dense, high-signal 1-line operational directives, cutting context token overhead by ~75%.
 > - **Automated Token Session Detection & Interactive Prompting**: If no active Antigravity CLI (`agy`) login session is detected, automatically scans candidate system paths or interactively prompts the user to paste their JSON token session, enter a file path, or run Google OAuth login directly.
 > - **Virtualenv Auto-Detection**: `run.sh` auto-detects local `.venv` environments, bypassing OS-level PEP 668 package restrictions smoothly.
 > - **Executive Manager Pattern & Context Hygiene**: Operates as an Engineering Manager, proactively offloading heavy file reads, deep web research, and verbose build logs to isolated subagents to keep the primary context pristine.
