@@ -81,6 +81,17 @@ flowchart TD
 - **Dynamic Memory Context**: Structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) are automatically injected into the agent prompt.
 - **Commands**: `/memory`, `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
+### 7. Deliberate Engineering Cadence & Skill Creation Protocol
+- **Philosophy ("Slow is Smooth, Smooth is Fast")**: Strict prohibition against rushed, messy one-shot implementations. Incremental, milestone-driven execution eliminates post-implementation debugging debt.
+- **Mandatory Dual Verification**: Every feature or procedure must pass both **positive tests** (clean happy-path execution) and **negative tests** (boundary cases, invalid inputs, graceful error handling).
+- **Sensible Polish Autonomy**: Proactive UI/UX enhancements (layout improvements, visual hierarchy, styling, intuitive button placement) are permitted without prompting, provided they never disrupt or complicate core logic.
+- **5-Phase Skill Creation Pipeline**:
+  1. **Phase 1: Goal & Boundary Definition** — Scope precise problem, input parameters, expected outputs, and trigger conditions.
+  2. **Phase 2: Procedure & Edge-Case Architecture** — Map sequential workflow, isolate failure modes, and specify fallback paths.
+  3. **Phase 3: Incremental Draft & Review** — Draft specification in digestible sections conforming to the `agentskills.io` standard.
+  4. **Phase 4: Positive & Negative Stress Testing** — Simulate and verify happy-path and error recovery behaviors.
+  5. **Phase 5: Catalog Registration & Packaging** — Commit to the active skill catalog only after rigorous verification.
+
 ---
 
 ## 🛠️ Modular Skills Catalog (8 Active Procedures)

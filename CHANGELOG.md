@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Deliberate Development Cadence ("Slow is Smooth, Smooth is Fast")**: Codified core engineering standards in `USER.md` prioritizing incremental, bug-free delivery over rushed one-shot implementations that generate debugging debt.
 - **Rigorous Dual Verification Standard**: Mandated both positive (happy path) and negative (boundary cases, invalid inputs, failure handling) verification for all features, skills, and code changes.
 - **Sensible UI/UX Polish Autonomy**: Formalized authority to proactively introduce layout, visual hierarchy, styling, and ergonomic refinements without disturbing core business logic.
+- **5-Phase Skill Creation Pipeline**: Formulated and codified the 5-phase skill creation pipeline (Phase 1: Goal & Boundary Definition, Phase 2: Procedure & Edge-Case Architecture, Phase 3: Incremental Draft & Review, Phase 4: Positive & Negative Stress Testing, Phase 5: Catalog Registration & Packaging) in `README.md` and `USER.md`.
+- **Upgraded Skill Creator Procedure (v1.1.0)**: Updated `skill_creator` to v1.1.0 enforcing the 5-phase deliberate creation protocol across the agent skill registry.
 - **Long-Term Memory Scaling Protocol**: Established memory preservation architecture covering semantic distillation, modular hot/warm/cold tiering, periodic pruning, and graduating recurrent patterns into reusable skills.
 
 ## [1.3.9] - 2026-09-19
