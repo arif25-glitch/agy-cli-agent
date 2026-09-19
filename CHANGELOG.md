@@ -5,6 +5,16 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.9] - 2026-09-19
+
+### Added
+- **Automated Regression Test Suite**: Added a comprehensive unit test suite in `tests/test_gemini_hermes.py` covering Configuration, MemoryStore (all 4 storage domains), SkillManager, ProjectManager, System Prompt generation, StreamParser, and Gateway Formatter with 100% pass rate.
+- **Thinking Delta Stream Parsing**: Enabled real-time cognitive thought parsing (`thinking_delta` and `thought`) in `stream_parser.py` for immediate scratchpad telemetry.
+- **Enhanced CLI Diagnostics**: Extended `run_diagnostics()` in `gemini_hermes/cli.py` to audit and report byte counts for `BACKLOG.md` and `REFERENCES.md`.
+
+### Changed
+- **Stream Parser Code Hygiene**: Removed vestigial worker role arguments from `ToolExecutionUpdate` in `stream_parser.py` to strictly reflect direct solo execution standards.
+
 ## [1.3.8] - 2026-09-18
 
 ### Added

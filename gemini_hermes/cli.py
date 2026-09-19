@@ -134,8 +134,12 @@ async def run_diagnostics():
     mem_store = MemoryStore()
     mem = mem_store.get_long_term_memory()
     usr = mem_store.get_user_profile()
+    backlog = mem_store.get_backlog()
+    refs = mem_store.get_references()
     print(f"   ✅ MEMORY.md loaded ({len(mem)} bytes)")
     print(f"   ✅ USER.md loaded ({len(usr)} bytes)")
+    print(f"   ✅ BACKLOG.md loaded ({len(backlog)} bytes)")
+    print(f"   ✅ REFERENCES.md loaded ({len(refs)} bytes)")
 
     print("\n3. [SKILLS] Testing Hermes Skills System (agentskills.io)...")
     skills_mgr = SkillManager()

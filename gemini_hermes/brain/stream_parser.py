@@ -17,7 +17,6 @@ class ThinkingDelta:
 class ToolExecutionUpdate:
     tool_name: str
     action: str
-    worker_role: Optional[str] = None
 
 
 @dataclass
@@ -41,6 +40,12 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
         if "text_delta" in su and su["text_delta"]:
             return TokenDelta(text=su["text_delta"])
 
+        # Check thinking delta
+        if "thinking_delta" in su and su["thinking_delta"]:
+            return ThinkingDelta(thought=su["thinking_delta"])
+        if "thought" in su and su["thought"]:
+            return ThinkingDelta(thought=su["thought"])
+
         # Check tool execution
         tool_name = su.get("tool_name") or su.get("canonical_tool")
         if tool_name:
@@ -48,7 +53,6 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
             params = tool_info.get("parameters", {}) if isinstance(tool_info, dict) else {}
 
             action = su.get("tool_action") or params.get("toolAction") or params.get("toolSummary")
-            worker_role = None
             if tool_name in ("write_to_file", "write_file"):
                 tgt = params.get("TargetFile") or params.get("target_file") or params.get("file_path") or ""
                 fname = tgt.split("/")[-1] if tgt else ""
@@ -75,7 +79,7 @@ def parse_ndjson_line(data: Dict[str, Any]) -> Optional[Any]:
                 # Strip markdown ticks or asterisks from existing action text
                 action = str(action).replace("`", "").replace("*", "").strip()
 
-            return ToolExecutionUpdate(tool_name=tool_name, action=action, worker_role=worker_role)
+            return ToolExecutionUpdate(tool_name=tool_name, action=action)
 
     elif event_type == "result":
         res = data.get("result", {})
