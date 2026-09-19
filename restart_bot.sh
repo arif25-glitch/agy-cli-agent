@@ -13,7 +13,9 @@ if [ -n "$old_pids" ]; then
 fi
 sleep 1
 
-cd /home/arif/agy-hermes
-export PYTHONPATH="/home/arif/agy-hermes:$PYTHONPATH"
-python3 -m gemini_hermes.cli start >> /home/arif/agy-hermes/gemini-hermes.log 2>&1 &
-echo $! > /home/arif/agy-hermes/gemini-hermes.pid
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
+python3 -m gemini_hermes.cli start >> "$SCRIPT_DIR/gemini-hermes.log" 2>&1 &
+echo $! > "$SCRIPT_DIR/gemini-hermes.pid"
+
