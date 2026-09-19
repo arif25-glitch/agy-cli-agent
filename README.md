@@ -1,12 +1,12 @@
-# 🪐 Gemini-Hermes AI Agent `v1.3.9`
+# 🪐 Gemini-Hermes AI Agent `v1.4.0`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.3.8 Highlights:**
-> - **Modular Multi-Domain Memory Architecture**: Refactored `MemoryStore` into four distinct storage domains: `MEMORY.md` (operational standards), `USER.md` (user preferences and communication rules), `BACKLOG.md` (active task queue and operational inquiries), and `REFERENCES.md` (external spreadsheets, documentation, and links).
-> - **Direct Solo Execution & Hands-on Engineering**: Decommissioned sub-agent delegation loops across prompt templates, skills, rules, and memory. Gemini-Hermes executes all commands, file edits, diagnostics, and builds directly.
-> - **Daemon Singleton PID Lock**: Enforced atomic PID file locking in `cli.py` to prevent duplicate bot instances and ensure daemon safety across restarts.
-> - **Sanitized Distribution Templates**: Provides clean generic starter templates for public deployment across all modular memory domains and projects.
+> **Release v1.4.0 Highlights:**
+> - **Deliberate Engineering Cadence ("Slow is Smooth, Smooth is Fast")**: Strict avoidance of rushed, messy one-shot implementations. Features are built incrementally to eliminate post-implementation debugging debt.
+> - **Rigorous Dual Verification Standard**: Mandatory positive (happy path) and negative (edge cases, invalid inputs, error handling) validation before declaring tasks complete.
+> - **Sensible Polish Autonomy**: Proactive UI/UX refinements (layout, styling, ergonomics) enabled without disturbing core logic.
+> - **Long-Term Memory Scaling Protocol**: Established memory preservation architecture covering semantic distillation, modular hot/warm/cold tiering, and graduation of recurring workflows into reusable procedural skills.
 
 ---
 
@@ -182,7 +182,7 @@ Run the comprehensive test suite to verify connectivity:
 ├── restart_bot.sh                 # Graceful lifecycle-aware daemon reloader
 ├── .env.example                   # Environment configuration template
 ├── gemini_hermes/
-│   ├── __init__.py                # Package version definition (v1.3.8)
+│   ├── __init__.py                # Package version definition (v1.4.0)
 │   ├── config.py                  # Settings loader & path constants
 │   ├── cli.py                     # CLI commands (start, setup, test, status)
 │   ├── brain/

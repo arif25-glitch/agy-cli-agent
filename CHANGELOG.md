@@ -5,6 +5,14 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-09-19
+
+### Added
+- **Deliberate Development Cadence ("Slow is Smooth, Smooth is Fast")**: Codified core engineering standards in `USER.md` prioritizing incremental, bug-free delivery over rushed one-shot implementations that generate debugging debt.
+- **Rigorous Dual Verification Standard**: Mandated both positive (happy path) and negative (boundary cases, invalid inputs, failure handling) verification for all features, skills, and code changes.
+- **Sensible UI/UX Polish Autonomy**: Formalized authority to proactively introduce layout, visual hierarchy, styling, and ergonomic refinements without disturbing core business logic.
+- **Long-Term Memory Scaling Protocol**: Established memory preservation architecture covering semantic distillation, modular hot/warm/cold tiering, periodic pruning, and graduating recurrent patterns into reusable skills.
+
 ## [1.3.9] - 2026-09-19
 
 ### Added
