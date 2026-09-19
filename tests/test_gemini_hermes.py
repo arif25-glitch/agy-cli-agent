@@ -87,6 +87,17 @@ class TestMemoryStore(unittest.TestCase):
         self.assertEqual(reset_sess["turn_count"], 0)
         self.assertIsNone(reset_sess["conversation_id"])
 
+    def test_prebuilt_templates_standards(self):
+        usr = self.store.get_user_profile()
+        self.assertIn("Slow is Smooth, Smooth is Fast", usr)
+        self.assertIn("Testing & Verification Standard", usr)
+        self.assertIn("Step-by-Step Skill Creation Protocol", usr)
+
+        mem = self.store.get_long_term_memory()
+        self.assertIn("Operational Standards", mem)
+        self.assertIn("Memory Scaling & Retention Protocol", mem)
+
+
 
 class TestSkillManager(unittest.TestCase):
     def setUp(self):
@@ -176,6 +187,8 @@ class TestSystemPrompt(unittest.TestCase):
         self.assertIn("Direct Solo Execution", prompt)
         self.assertIn("Available Skills (Modular Procedures)", prompt)
         self.assertIn("Telegram Chat ID: 12345", prompt)
+        self.assertIn("Deliberate Cadence & Rigorous Dual Verification", prompt)
+        self.assertIn("Slow is Smooth, Smooth is Fast", prompt)
         self.assertNotIn("manager_delegation", prompt.lower())
 
 

@@ -14,6 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **5-Phase Skill Creation Pipeline**: Formulated and codified the 5-phase skill creation pipeline (Phase 1: Goal & Boundary Definition, Phase 2: Procedure & Edge-Case Architecture, Phase 3: Incremental Draft & Review, Phase 4: Positive & Negative Stress Testing, Phase 5: Catalog Registration & Packaging) in `README.md` and `USER.md`.
 - **Upgraded Skill Creator Procedure (v1.1.0)**: Updated `skill_creator` to v1.1.0 enforcing the 5-phase deliberate creation protocol across the agent skill registry.
 - **Long-Term Memory Scaling Protocol**: Established memory preservation architecture covering semantic distillation, modular hot/warm/cold tiering, periodic pruning, and graduating recurrent patterns into reusable skills.
+- **Enhanced Prebuilt Memory Blueprints**: Updated `DEFAULT_USER_TEMPLATE` and `DEFAULT_MEMORY_TEMPLATE` in `templates.py` to seed fresh installations with deliberate development standards, testing requirements, and memory lifecycle protocols out of the box.
+- **Base Persona System Prompt Directives**: Added explicit Section 7 ("Deliberate Cadence & Rigorous Dual Verification") to `HERMES_BASE_INSTRUCTIONS`.
+- **Upgraded Memory Keeper Procedure (v1.2.0)**: Extended `memory_keeper` with long-term memory scaling, semantic distillation, and tiered storage lifecycles.
+
+### Changed
+- **Skill Storage De-duplication**: Pruned redundant duplicate files from `data/skills/`, eliminating duplicate disk I/O and ensuring `data/skills/` cleanly serves as an isolated repository for newly created custom skills while built-in skills load directly from package resources.
 
 ## [1.3.9] - 2026-09-19
 

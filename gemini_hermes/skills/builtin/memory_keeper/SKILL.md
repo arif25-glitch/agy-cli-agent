@@ -1,7 +1,7 @@
 ---
 name: memory_keeper
 description: Best practices for managing persistent modular memory (MEMORY.md, USER.md, BACKLOG.md, REFERENCES.md).
-version: 1.1.0
+version: 1.2.0
 tags: [memory, persistence, context]
 ---
 
@@ -22,3 +22,9 @@ Gemini-Hermes maintains persistent state across sessions. Use this procedure to 
    - Keep domain files focused and compact to avoid context dilution.
    - Write declarative, concise bullet points.
    - Avoid routine chat churn and ephemeral debug traces in persistent memory files.
+4. **Long-Term Memory Scaling & Lifecycle**:
+   - *Semantic Distillation*: Condense multi-turn dialogues into concise declarative rules (e.g. compress 1,000 conversation tokens into 2 high-signal bullet points).
+   - *Tiered Storage*: Hot in-prompt active state, warm modular markdown files, and cold disk archives for completed tasks.
+   - *Skill Graduation*: When a problem-solving pattern recurs repeatedly, graduate it into a standalone modular skill via `skill_creator` rather than accumulating procedural bloat in memory files.
+   - *Periodic Pruning*: Regularly audit and prune stale context, temporary test endpoints, and completed backlog items.
+

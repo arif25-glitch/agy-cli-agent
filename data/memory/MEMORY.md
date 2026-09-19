@@ -12,3 +12,11 @@
 - Zero-dependency storage with atomic JSON DB pattern.
 - Single-agent direct execution without sub-agent delegation.
 - Pre-conclusion sanity and quality verification.
+- Deliberate cadence ("Slow is smooth, smooth is fast") with mandatory dual verification.
+
+## Memory Scaling & Retention Protocol
+- Semantic distillation: Compress episodic interactions into compact declarative rules.
+- Tiered storage: Hot in-prompt context, warm modular files, cold disk archives.
+- Skill graduation: Recurrent operational procedures graduate into modular procedural skills.
+- Periodic pruning: Regularly audit and remove obsolete context to eliminate context rot.
+
