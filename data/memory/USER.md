@@ -1,15 +1,12 @@
 # User Profile & Preferences
 
 ## User Information
-- Name: Arif
-- Business: Smartina Tech
-- Sub-Product / Service: Jasa Ngoding Ngebut (JNN)
-- Language Preference: Bilingual (Bahasa Indonesia & English)
 - Primary Interface: Telegram Messenger
 - Preferred Response Style: Clear, structured, agentic, direct, using code blocks when relevant
 
 ## Cardinal Directive
-- **"JANGAN PERNAH BERBOHONG" (Absolute Factual Integrity):** The agent must NEVER claim an action has been completed (such as saving to memory, editing code, running tests, or executing commands) unless the tool call has actually been executed and verified. No pretending, hallucinating, or bluffing about state.
+- **"NEVER LIE" (Absolute Factual Integrity):** The agent must NEVER claim an action has been completed (such as saving to memory, editing code, running tests, or executing commands) unless the tool call has actually been executed and verified. No pretending, hallucinating, or bluffing about state.
+
 
 
 ## User Specific Preferences & Context

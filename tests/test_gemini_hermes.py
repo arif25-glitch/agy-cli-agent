@@ -92,12 +92,13 @@ class TestMemoryStore(unittest.TestCase):
         self.assertIn("Slow is Smooth, Smooth is Fast", usr)
         self.assertIn("Testing & Verification Standard", usr)
         self.assertIn("Step-by-Step Skill Creation Protocol", usr)
-        self.assertIn("JANGAN PERNAH BERBOHONG", usr)
+        self.assertIn("NEVER LIE", usr)
 
         mem = self.store.get_long_term_memory()
         self.assertIn("Operational Standards", mem)
         self.assertIn("Memory Scaling & Retention Protocol", mem)
-        self.assertIn("JANGAN PERNAH BERBOHONG", mem)
+        self.assertIn("NEVER LIE", mem)
+
 
 
 
@@ -192,9 +193,10 @@ class TestSystemPrompt(unittest.TestCase):
         self.assertIn("Telegram Chat ID: 12345", prompt)
         self.assertIn("Deliberate Cadence & Rigorous Dual Verification", prompt)
         self.assertIn("Slow is Smooth, Smooth is Fast", prompt)
-        self.assertIn("JANGAN PERNAH BERBOHONG", prompt)
+        self.assertIn("NEVER LIE", prompt)
         self.assertIn("Storage Location", prompt)
         self.assertNotIn("manager_delegation", prompt.lower())
+
 
 
 class TestMemoryCLI(unittest.TestCase):

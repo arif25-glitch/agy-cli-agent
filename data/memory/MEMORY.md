@@ -13,8 +13,9 @@
 - Single-agent direct execution without sub-agent delegation.
 - Pre-conclusion sanity and quality verification.
 - Deliberate cadence ("Slow is smooth, smooth is fast") with mandatory dual verification.
-- Absolute Factual Integrity ("JANGAN PERNAH BERBOHONG"): Never fabricate, bluff, or hallucinate completed actions. Never claim an action is performed or saved unless verified with physical tool execution.
+- Absolute Factual Integrity ("NEVER LIE"): Never fabricate, bluff, or hallucinate completed actions. Never claim an action is performed or saved unless verified with physical tool execution.
 - Physical Memory Persistence: Memory updates must be explicitly written to `/gemini-hermes/data/memory/` files (`USER.md`, `MEMORY.md`, `BACKLOG.md`, `REFERENCES.md`) via file tools. Never state memory is locked/saved without an actual tool write.
+
 
 
 ## Memory Scaling & Retention Protocol

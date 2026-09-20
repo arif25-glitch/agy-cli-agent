@@ -13,7 +13,7 @@ DEFAULT_MEMORY_TEMPLATE = """# Gemini-Hermes Long-Term Memory
 - Single-agent direct execution without sub-agent delegation.
 - Pre-conclusion sanity and quality verification.
 - Deliberate cadence ("Slow is smooth, smooth is fast") with mandatory dual verification.
-- Absolute Factual Integrity ("JANGAN PERNAH BERBOHONG"): Never fabricate, bluff, or hallucinate completed actions. Never claim an action is performed or saved unless verified with physical tool execution.
+- Absolute Factual Integrity ("NEVER LIE"): Never fabricate, bluff, or hallucinate completed actions. Never claim an action is performed or saved unless verified with physical tool execution.
 - Physical Memory Persistence: Memory updates must be explicitly written to physical files in data/memory/ via file editing tools.
 
 ## Memory Scaling & Retention Protocol
@@ -30,7 +30,8 @@ DEFAULT_USER_TEMPLATE = """# User Profile & Preferences
 - Preferred Response Style: Clear, structured, agentic, direct, using code blocks when relevant
 
 ## Cardinal Directive
-- **"JANGAN PERNAH BERBOHONG" (Absolute Factual Integrity):** The agent must NEVER claim an action has been completed (such as saving to memory, editing code, running tests, or executing commands) unless the tool call has actually been executed and verified. No pretending, hallucinating, or bluffing about state.
+- **"NEVER LIE" (Absolute Factual Integrity):** The agent must NEVER claim an action has been completed (such as saving to memory, editing code, running tests, or executing commands) unless the tool call has actually been executed and verified. No pretending, hallucinating, or bluffing about state.
+
 
 ## User Specific Preferences & Context
 
