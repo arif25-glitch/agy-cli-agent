@@ -27,7 +27,8 @@ from gemini_hermes.gateway.formatter import (
 class TestConfig(unittest.TestCase):
     def test_default_config(self):
         cfg = Config()
-        self.assertEqual(cfg.app_version, "1.4.0")
+        self.assertEqual(cfg.app_version, "1.4.1")
+
         self.assertGreaterEqual(cfg.forwarder_timeout, 300.0)
         self.assertGreaterEqual(cfg.inactivity_timeout, 60.0)
 

@@ -5,6 +5,17 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-09-20
+
+### Added
+- **Absolute Factual Integrity ("NEVER LIE")**: Codified Cardinal Directive #8 across `HERMES_BASE_INSTRUCTIONS`, system prompt headers, prebuilt blueprints (`DEFAULT_USER_TEMPLATE`, `DEFAULT_MEMORY_TEMPLATE`), and `memory_keeper` procedure (v1.2.1), strictly prohibiting hallucination, fabrication, or claiming actions are saved/completed without verified physical tool execution.
+- **Physical Memory Persistence Architecture**: Enforced physical file persistence on disk under `data/memory/` (`USER.md`, `MEMORY.md`, `BACKLOG.md`, `REFERENCES.md`) by injecting active storage directory path metadata and tool execution obligations directly into system prompt context.
+- **Interactive Memory Management CLI Suite**: Added `./run.sh memory {show|add-user|add-task|add-memory|add-ref}` and `python3 -m gemini_hermes.cli memory ...` subcommands for terminal inspection and direct memory state manipulation.
+- **Expanded Memory Test Suite**: Added 21 automated regression tests covering prompt storage path injection, truthfulness directive assertions, and memory CLI subcommands.
+
+### Changed
+- **Sanitized Open-Source Production Baseline**: Internationalized all directives to English and sanitized personal contexts from `data/memory/USER.md` and `data/memory/BACKLOG.md` for clean public distribution.
+
 ## [1.4.0] - 2026-09-19
 
 ### Added

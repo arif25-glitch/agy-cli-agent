@@ -1,12 +1,13 @@
-# 🪐 Gemini-Hermes AI Agent `v1.4.0`
+# 🪐 Gemini-Hermes AI Agent `v1.4.1`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.4.0 Highlights:**
-> - **Deliberate Engineering Cadence ("Slow is Smooth, Smooth is Fast")**: Strict avoidance of rushed, messy one-shot implementations. Features are built incrementally to eliminate post-implementation debugging debt.
-> - **Rigorous Dual Verification Standard**: Mandatory positive (happy path) and negative (edge cases, invalid inputs, error handling) validation before declaring tasks complete.
-> - **Sensible Polish Autonomy**: Proactive UI/UX refinements (layout, styling, ergonomics) enabled without disturbing core logic.
-> - **Long-Term Memory Scaling Protocol**: Established memory preservation architecture covering semantic distillation, modular hot/warm/cold tiering, and graduation of recurring workflows into reusable procedural skills.
+> **Release v1.4.1 Highlights:**
+> - **Absolute Factual Integrity ("NEVER LIE")**: Codified Cardinal Directive #8 in system persona, memory templates, and skills enforcing zero-tolerance for fabrication or claiming actions are completed without verified physical tool execution.
+> - **Physical Memory Persistence Enforcement**: Injected physical storage path metadata directly into system prompt context, requiring physical file tool writes on `data/memory/` for all state changes.
+> - **Interactive Memory CLI Suite**: Added `./run.sh memory {show|add-user|add-task|add-memory|add-ref}` and `python3 -m gemini_hermes.cli memory ...` for direct terminal inspection and updates.
+> - **Sanitized Open-Source Production Release**: Fully internationalized all directives to English and sanitized personal contexts for public distribution.
+
 
 ---
 
@@ -193,7 +194,8 @@ Run the comprehensive test suite to verify connectivity:
 ├── restart_bot.sh                 # Graceful lifecycle-aware daemon reloader
 ├── .env.example                   # Environment configuration template
 ├── gemini_hermes/
-│   ├── __init__.py                # Package version definition (v1.4.0)
+│   ├── __init__.py                # Package version definition (v1.4.1)
+
 │   ├── config.py                  # Settings loader & path constants
 │   ├── cli.py                     # CLI commands (start, setup, test, status)
 │   ├── brain/
