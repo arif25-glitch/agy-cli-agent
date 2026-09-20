@@ -92,10 +92,13 @@ class TestMemoryStore(unittest.TestCase):
         self.assertIn("Slow is Smooth, Smooth is Fast", usr)
         self.assertIn("Testing & Verification Standard", usr)
         self.assertIn("Step-by-Step Skill Creation Protocol", usr)
+        self.assertIn("JANGAN PERNAH BERBOHONG", usr)
 
         mem = self.store.get_long_term_memory()
         self.assertIn("Operational Standards", mem)
         self.assertIn("Memory Scaling & Retention Protocol", mem)
+        self.assertIn("JANGAN PERNAH BERBOHONG", mem)
+
 
 
 
@@ -189,7 +192,50 @@ class TestSystemPrompt(unittest.TestCase):
         self.assertIn("Telegram Chat ID: 12345", prompt)
         self.assertIn("Deliberate Cadence & Rigorous Dual Verification", prompt)
         self.assertIn("Slow is Smooth, Smooth is Fast", prompt)
+        self.assertIn("JANGAN PERNAH BERBOHONG", prompt)
+        self.assertIn("Storage Location", prompt)
         self.assertNotIn("manager_delegation", prompt.lower())
+
+
+class TestMemoryCLI(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.mem_dir = self.temp_dir / "memory"
+        self.sess_dir = self.temp_dir / "sessions"
+        self.store = MemoryStore(memory_dir=self.mem_dir, sessions_dir=self.sess_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
+
+    def test_cli_actions(self):
+        from unittest.mock import patch
+        from gemini_hermes.cli import run_memory_cli
+
+        class DummyArgs:
+            def __init__(self, **kwargs):
+                for k, v in kwargs.items():
+                    setattr(self, k, v)
+
+        with patch("gemini_hermes.cli.MemoryStore", return_value=self.store):
+            # Test add-memory
+            run_memory_cli(DummyArgs(mem_action="add-memory", note="CLI test note"))
+            self.assertIn("CLI test note", self.store.get_long_term_memory())
+
+            # Test add-user
+            run_memory_cli(DummyArgs(mem_action="add-user", preference="CLI test user preference"))
+            self.assertIn("CLI test user preference", self.store.get_user_profile())
+
+            # Test add-task
+            run_memory_cli(DummyArgs(mem_action="add-task", task="CLI test task"))
+            self.assertIn("CLI test task", self.store.get_backlog())
+
+            # Test add-ref
+            run_memory_cli(DummyArgs(mem_action="add-ref", title="CLI Ref", url="https://test.com"))
+            self.assertIn("CLI Ref", self.store.get_references())
+
+            # Test show (should not raise)
+            run_memory_cli(DummyArgs(mem_action="show"))
+
 
 
 class TestStreamParser(unittest.TestCase):

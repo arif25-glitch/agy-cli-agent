@@ -224,6 +224,36 @@ async def start_bot():
         release_pid_lock()
 
 
+def run_memory_cli(args):
+    store = MemoryStore()
+    action = getattr(args, "mem_action", "show") or "show"
+    if action == "show":
+        print("=" * 60)
+        print("          GEMINI-HERMES PERSISTENT MEMORY")
+        print("=" * 60)
+        print(f"\n[Storage Directory]: {store.memory_dir}\n")
+        print("--- USER.md ---")
+        print(store.get_user_profile().strip())
+        print("\n--- MEMORY.md ---")
+        print(store.get_long_term_memory().strip())
+        print("\n--- BACKLOG.md ---")
+        print(store.get_backlog().strip())
+        print("\n--- REFERENCES.md ---")
+        print(store.get_references().strip())
+    elif action == "add-memory":
+        store.append_to_memory(args.note)
+        print(f"✅ Appended to MEMORY.md: {args.note}")
+    elif action == "add-user":
+        store.update_user_profile(args.preference)
+        print(f"✅ Appended to USER.md: {args.preference}")
+    elif action == "add-task":
+        store.append_to_backlog(args.task)
+        print(f"✅ Appended to BACKLOG.md: {args.task}")
+    elif action == "add-ref":
+        store.append_to_references(args.title, args.url)
+        print(f"✅ Appended to REFERENCES.md: {args.title} -> {args.url}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Gemini-Hermes AI Agent Runner")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
@@ -231,6 +261,19 @@ def main():
     subparsers.add_parser("start", help="Start the Gemini-Hermes Telegram Gateway")
     subparsers.add_parser("setup", help="Run interactive setup wizard")
     subparsers.add_parser("test", help="Run diagnostic health checks")
+
+    mem_parser = subparsers.add_parser("memory", help="Inspect or update persistent memory files")
+    mem_sub = mem_parser.add_subparsers(dest="mem_action", help="Memory action")
+    mem_sub.add_parser("show", help="Show current persistent memory")
+    add_mem = mem_sub.add_parser("add-memory", help="Append note to MEMORY.md")
+    add_mem.add_argument("note", help="Note text to append")
+    add_usr = mem_sub.add_parser("add-user", help="Append preference to USER.md")
+    add_usr.add_argument("preference", help="User preference text to append")
+    add_task = mem_sub.add_parser("add-task", help="Append task to BACKLOG.md")
+    add_task.add_argument("task", help="Task description to append")
+    add_ref = mem_sub.add_parser("add-ref", help="Append reference to REFERENCES.md")
+    add_ref.add_argument("title", help="Title of reference")
+    add_ref.add_argument("url", help="URL of reference")
 
     args = parser.parse_args()
 
@@ -240,6 +283,8 @@ def main():
         asyncio.run(run_setup())
     elif cmd == "test":
         asyncio.run(run_diagnostics())
+    elif cmd == "memory":
+        run_memory_cli(args)
     elif cmd == "start":
         asyncio.run(start_bot())
     else:
@@ -248,3 +293,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

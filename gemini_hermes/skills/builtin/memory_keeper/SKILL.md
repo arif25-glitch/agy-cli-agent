@@ -24,7 +24,12 @@ Gemini-Hermes maintains persistent state across sessions. Use this procedure to 
    - Avoid routine chat churn and ephemeral debug traces in persistent memory files.
 4. **Long-Term Memory Scaling & Lifecycle**:
    - *Semantic Distillation*: Condense multi-turn dialogues into concise declarative rules (e.g. compress 1,000 conversation tokens into 2 high-signal bullet points).
-   - *Tiered Storage*: Hot in-prompt active state, warm modular markdown files, and cold disk archives for completed tasks.
+   - *Tiered Storage*: Hot in-prompt active state, warm modular markdown files (`data/memory/`), and cold disk archives for completed tasks.
    - *Skill Graduation*: When a problem-solving pattern recurs repeatedly, graduate it into a standalone modular skill via `skill_creator` rather than accumulating procedural bloat in memory files.
    - *Periodic Pruning*: Regularly audit and prune stale context, temporary test endpoints, and completed backlog items.
+5. **Absolute Factual Integrity ("JANGAN PERNAH BERBOHONG")**:
+   - Updates must be physical: When the user shares identity details, project facts, or preferences, the agent MUST physically execute file editing tools (`replace_file_content` or `write_to_file`) on the target file in `data/memory/`.
+   - Never claim or state "saved in persistent memory" if no tool call was actually executed to modify the file on disk.
+   - Zero tolerance for hallucinating or bluffing completed memory operations.
+
 

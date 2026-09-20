@@ -27,10 +27,15 @@ show_help() {
     echo "  status      Check whether the daemon is running"
     echo "  logs        Follow the live log output"
     echo "  test        Run system diagnostics and health checks"
+    echo "  memory      Inspect or update persistent memory files"
     echo ""
 }
 
 case "$1" in
+    memory)
+        shift
+        $PYTHON_BIN -m gemini_hermes.cli memory "$@"
+        ;;
     setup)
         $PYTHON_BIN -m gemini_hermes.cli setup
         ;;
