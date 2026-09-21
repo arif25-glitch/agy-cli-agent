@@ -194,6 +194,7 @@ class TelegramBot:
             f"• `/new` / `/reset` - Clears the current conversation thread and begins a fresh session.\n"
             f"• `/status` - Shows active conversation ID, turns, token metrics, and engine status.\n"
             f"• `/memory` - Displays all active persistent memory modules.\n"
+            f"• `/compact` - Archives older completed tasks to data/memory/archive/ and keeps prompt context sharp.\n"
             f"• `/memory_add <note>` - Manually saves a new note to persistent operational memory.\n"
             f"• `/task_add <task>` - Adds a task to the active backlog (`BACKLOG.md`).\n"
             f"• `/ref_add <title> | <url>` - Saves an external link or sheet to references (`REFERENCES.md`).\n"
@@ -255,12 +256,38 @@ class TelegramBot:
         text = "\n\n".join(sections) if sections else "ℹ️ No memory files found."
         await self.send_message(chat_id, text)
 
+    async def handle_compact(self, chat_id: int):
+        res = self.memory_store.archive_completed_backlog(keep_recent=5)
+        stats = self.memory_store.get_memory_stats()
+
+        if res.get("status") == "archived":
+            text = (
+                f"🧹 *Memory Compaction & Tiering Complete*\n\n"
+                f"• *Archived Completed Tasks:* `{res['archived_count']}` (migrated to warm archive)\n"
+                f"• *Recent Completed in Hot Context:* `{res['retained_count']}`\n"
+                f"• *Active Tasks Kept:* `{res['active_count']}`\n"
+                f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
+                f"• *Total Memory Preserved on Disk:* ~`{stats['total_tokens']:,}` tokens\n"
+                f"• *Archive Location:* `data/memory/archive/BACKLOG_ARCHIVE.md`"
+            )
+        else:
+            text = (
+                f"✨ *Memory is Already Compact & Sharp*\n\n"
+                f"• *Completed Tasks in Backlog:* `{res.get('retained_count', 0)}` (under threshold of 5)\n"
+                f"• *Active Tasks:* `{res.get('active_count', 0)}`\n"
+                f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
+                f"• *Archived Off-Prompt Tokens:* ~`{stats['archived_tokens']:,}` tokens\n"
+                f"No archiving was needed."
+            )
+        await self.send_message(chat_id, text)
+
     async def handle_memory_add(self, chat_id: int, note: str):
         if not note.strip():
             await self.send_message(chat_id, "⚠️ Please provide text to save: `/memory_add <text>`")
             return
         self.memory_store.append_to_memory(note)
         await self.send_message(chat_id, f"✅ Successfully saved to persistent memory:\n`{note.strip()}`")
+
 
     async def handle_task_add(self, chat_id: int, task: str):
         if not task.strip():
@@ -1093,6 +1120,8 @@ class TelegramBot:
                 await self.handle_status(chat_id)
             elif cmd == "/memory":
                 await self.handle_memory(chat_id)
+            elif cmd == "/compact":
+                await self.handle_compact(chat_id)
             elif cmd == "/memory_add":
                 await self.handle_memory_add(chat_id, arg)
             elif cmd == "/task_add":

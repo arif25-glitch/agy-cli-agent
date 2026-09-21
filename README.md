@@ -129,6 +129,7 @@ Gemini-Hermes features 9 modular procedures conforming to the `agentskills.io` s
 | `/project_add <name> <path>` | Bookmark a new project into persistent state |
 | `/project_task <id> <task>` | Attach a new task or milestone to an indexed project |
 | `/memory` | Inspect modular memory domains (`MEMORY.md`, `USER.md`, `BACKLOG.md`, `REFERENCES.md`) |
+| `/compact` | Archive older completed tasks to `data/memory/archive/` and keep working context sharp |
 | `/memory_add <text>` | Manually save a permanent operational fact or rule to `MEMORY.md` |
 | `/task_add <task>` | Append an active task or inquiry directly to `BACKLOG.md` |
 | `/ref_add <title> \| <url>` | Save an external spreadsheet, documentation, or resource link to `REFERENCES.md` |

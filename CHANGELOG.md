@@ -5,7 +5,23 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-09-21
+
+### Added
+- **Tiered Quality Memory Architecture (Hot vs. Warm Memory)**: Implemented structured memory tiering in `MemoryStore` (`gemini_hermes/memory/store.py`), separating fast in-prompt working context ("Hot Memory") from permanent on-disk archives ("Warm Memory" in `data/memory/archive/BACKLOG_ARCHIVE.md`).
+- **Dynamic Hot Backlog Capping**: `get_hot_backlog(max_recent_completed=5)` guarantees that prompt context preserves 100% of active tasks `[ ]` while capping completed milestones `[x]` to the 5 most recent entries with an archival indicator, preventing unbounded token bloat and attention dilution.
+- **Backlog Archiving & Migration Engine**: `archive_completed_backlog(keep_recent=5)` atomically migrates older resolved tasks and their multiline nested verification logs to `data/memory/archive/BACKLOG_ARCHIVE.md`.
+- **Telegram `/compact` Command**: Added `/compact` command to Telegram gateway, allowing one-touch memory compaction, archiving, and real-time telemetry reporting on hot vs. archived token metrics.
+- **Dual Verification Test Suite for Tiered Memory**: Added `TestTieredQualityMemory` in `tests/test_gemini_hermes.py` covering:
+  * `test_positive_hot_backlog_filtering`: Verifies active task retention and completed task capping.
+  * `test_positive_archive_completed_tasks_multiline`: Verifies multiline nested task preservation in warm archive.
+  * `test_positive_memory_stats_metrics`: Verifies token and character metrics calculation.
+  * `test_positive_compact_command_flow`: Verifies Telegram `/compact` command flow and response formatting.
+  * `test_negative_no_op_when_under_threshold`: Verifies idempotent no-op when completed tasks are below threshold.
+  * `test_negative_empty_or_malformed_backlog_graceful`: Verifies graceful handling of empty or unformatted markdown.
+
 ## [1.4.3] - 2026-09-21
+
 
 ### Added
 - **/steer Command (Mid-Flight Course Correction & Immediate Intervention)**: Added `/steer <instruction>` allowing the user to immediately intervene and redirect the agent mid-flight during active tasks or provide high-priority guidance when idle.

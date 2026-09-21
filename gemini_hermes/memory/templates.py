@@ -63,3 +63,13 @@ DEFAULT_REFERENCES_TEMPLATE = """# External References & Resources
 ## Documentation & API Endpoints
 - (API specs and external documentation links will be tracked here)
 """
+
+DEFAULT_ARCHIVE_TEMPLATE = """# Archived Completed Tasks (Warm Memory)
+
+> [!NOTE]
+> This archive preserves completed milestones, test logs, and historical tasks permanently off-prompt.
+> Use file inspection tools to review historical tasks when needed.
+
+## Completed Milestones & Archive
+"""
+

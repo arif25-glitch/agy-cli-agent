@@ -27,7 +27,7 @@ from gemini_hermes.gateway.formatter import (
 class TestConfig(unittest.TestCase):
     def test_default_config(self):
         cfg = Config()
-        self.assertEqual(cfg.app_version, "1.4.3")
+        self.assertEqual(cfg.app_version, "1.5.0")
 
         self.assertGreaterEqual(cfg.forwarder_timeout, 300.0)
         self.assertGreaterEqual(cfg.inactivity_timeout, 60.0)
@@ -726,7 +726,168 @@ class TestSteerCommand(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(bot._task_queues[555][0], "queued task 1")
 
 
+class TestTieredQualityMemory(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.test_dir = Path(tempfile.mkdtemp())
+        self.memory_dir = self.test_dir / "memory"
+        self.sessions_dir = self.test_dir / "sessions"
+        self.store = MemoryStore(memory_dir=self.memory_dir, sessions_dir=self.sessions_dir)
+
+    def tearDown(self):
+        shutil.rmtree(self.test_dir, ignore_errors=True)
+
+    def test_positive_hot_backlog_filtering(self):
+        """Positive Path: Verify hot backlog keeps all active tasks and only max_recent_completed completed tasks."""
+        backlog_content = (
+            "# Active Task Backlog\n\n"
+            "## Active Tasks\n"
+            "- [x] Task 1: Setup repo\n"
+            "- [x] Task 2: Install dependencies\n"
+            "- [x] Task 3: Setup database\n"
+            "- [x] Task 4: Add user model\n"
+            "- [x] Task 5: Add auth routes\n"
+            "- [x] Task 6: Add rate limiting\n"
+            "- [ ] Task 7: Implement Stripe billing\n"
+            "- [ ] Task 8: Deploy to production\n\n"
+            "## Operational Notes & Inquiries\n"
+            "- Database migration pending.\n"
+        )
+        self.store.backlog_file.write_text(backlog_content, encoding="utf-8")
+
+        # Get hot backlog with max 3 completed tasks
+        hot = self.store.get_hot_backlog(max_recent_completed=3)
+
+        # Active tasks MUST both be present
+        self.assertIn("Task 7: Implement Stripe billing", hot)
+        self.assertIn("Task 8: Deploy to production", hot)
+
+        # The last 3 completed tasks MUST be present
+        self.assertIn("Task 4: Add user model", hot)
+        self.assertIn("Task 5: Add auth routes", hot)
+        self.assertIn("Task 6: Add rate limiting", hot)
+
+        # The older completed tasks (1, 2, 3) must NOT be in hot backlog
+        self.assertNotIn("Task 1: Setup repo", hot)
+        self.assertNotIn("Task 2: Install dependencies", hot)
+        self.assertNotIn("Task 3: Setup database", hot)
+
+        # Archival note indicator must be present
+        self.assertIn("3 older completed tasks archived", hot)
+
+    def test_positive_archive_completed_tasks_multiline(self):
+        """Positive Path: Archive completed tasks with nested multi-line sub-bullets to BACKLOG_ARCHIVE.md."""
+        backlog_content = (
+            "# Active Task Backlog\n\n"
+            "## Active Tasks\n"
+            "- [x] Task Alpha: Complex architecture\n"
+            "  * Detail 1: Setup microservices\n"
+            "  * Detail 2: Verified latency under 20ms\n"
+            "- [x] Task Beta: Redis caching\n"
+            "  * Cache hit ratio 99%\n"
+            "- [x] Task Gamma: Docker build\n"
+            "- [x] Task Delta: K8s manifests\n"
+            "- [x] Task Epsilon: Prometheus metrics\n"
+            "- [x] Task Zeta: Grafana dashboards\n"
+            "- [ ] Task Eta: Alertmanager webhooks\n\n"
+            "## Operational Notes & Inquiries\n"
+            "- Operational facts here.\n"
+        )
+        self.store.backlog_file.write_text(backlog_content, encoding="utf-8")
+
+        # Keep recent 2 completed tasks, archive older 4
+        result = self.store.archive_completed_backlog(keep_recent=2)
+        self.assertEqual(result["status"], "archived")
+        self.assertEqual(result["archived_count"], 4)
+        self.assertEqual(result["retained_count"], 2)
+        self.assertEqual(result["active_count"], 1)
+
+        # Verify BACKLOG_ARCHIVE.md on disk
+        archive_text = self.store.get_archived_backlog()
+        self.assertIn("Task Alpha: Complex architecture", archive_text)
+        self.assertIn("Detail 1: Setup microservices", archive_text)
+        self.assertIn("Detail 2: Verified latency under 20ms", archive_text)
+        self.assertIn("Task Beta: Redis caching", archive_text)
+        self.assertIn("Cache hit ratio 99%", archive_text)
+        self.assertIn("Task Gamma: Docker build", archive_text)
+        self.assertIn("Task Delta: K8s manifests", archive_text)
+
+        # Verify BACKLOG.md retains only recent 2 + active task
+        new_backlog = self.store.get_backlog()
+        self.assertNotIn("Task Alpha", new_backlog)
+        self.assertNotIn("Task Beta", new_backlog)
+        self.assertNotIn("Task Gamma", new_backlog)
+        self.assertNotIn("Task Delta", new_backlog)
+        self.assertIn("Task Epsilon: Prometheus metrics", new_backlog)
+        self.assertIn("Task Zeta: Grafana dashboards", new_backlog)
+        self.assertIn("Task Eta: Alertmanager webhooks", new_backlog)
+
+    def test_positive_memory_stats_metrics(self):
+        """Positive Path: Verify get_memory_stats returns accurate token and file metrics."""
+        stats = self.store.get_memory_stats()
+        self.assertIn("hot_tokens", stats)
+        self.assertIn("total_tokens", stats)
+        self.assertIn("archived_tokens", stats)
+        self.assertIn("files", stats)
+        self.assertIn("MEMORY.md", stats["files"])
+        self.assertIn("BACKLOG.md (hot)", stats["files"])
+
+    async def test_positive_compact_command_flow(self):
+        """Positive Path: Verify Telegram /compact command triggers archiving and sends telemetry summary."""
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.memory_store = self.store
+        bot.send_message = AsyncMock(return_value=901)
+
+        backlog_content = (
+            "# Active Task Backlog\n\n"
+            "## Active Tasks\n"
+            "- [x] 1. One\n- [x] 2. Two\n- [x] 3. Three\n- [x] 4. Four\n- [x] 5. Five\n- [x] 6. Six\n- [ ] 7. Seven\n"
+        )
+        self.store.backlog_file.write_text(backlog_content, encoding="utf-8")
+
+        await bot.handle_compact(chat_id=777)
+
+        bot.send_message.assert_called_once()
+        msg = bot.send_message.call_args[0][1]
+        self.assertIn("Memory Compaction & Tiering Complete", msg)
+        self.assertIn("Archived Completed Tasks", msg)
+        self.assertIn("Recent Completed in Hot Context", msg)
+
+    def test_negative_no_op_when_under_threshold(self):
+        """Negative Path: Compaction is a clean no-op when completed tasks <= keep_recent."""
+        backlog_content = (
+            "# Active Task Backlog\n\n"
+            "## Active Tasks\n"
+            "- [x] Task 1\n"
+            "- [x] Task 2\n"
+            "- [ ] Task 3\n"
+        )
+        self.store.backlog_file.write_text(backlog_content, encoding="utf-8")
+        orig_content = self.store.backlog_file.read_text(encoding="utf-8")
+
+        result = self.store.archive_completed_backlog(keep_recent=5)
+        self.assertEqual(result["status"], "noop")
+        self.assertEqual(result["archived_count"], 0)
+        self.assertEqual(self.store.backlog_file.read_text(encoding="utf-8"), orig_content)
+        self.assertFalse(self.store.backlog_archive_file.exists())
+
+    def test_negative_empty_or_malformed_backlog_graceful(self):
+        """Negative Path: Empty or malformed backlog does not crash or lose content."""
+        self.store.backlog_file.write_text("", encoding="utf-8")
+        result = self.store.archive_completed_backlog(keep_recent=5)
+        self.assertEqual(result["status"], "empty")
+        self.assertEqual(result["archived_count"], 0)
+
+        # Malformed markdown without sections
+        self.store.backlog_file.write_text("random notes without headers\nsome unformatted lines", encoding="utf-8")
+        hot = self.store.get_hot_backlog()
+        self.assertIn("random notes without headers", hot)
+
+
 if __name__ == "__main__":
     unittest.main()
+
 
 
