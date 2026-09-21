@@ -16,6 +16,13 @@ sleep 1
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
-python3 -m gemini_hermes.cli start >> "$SCRIPT_DIR/gemini-hermes.log" 2>&1 &
+
+if [ -d "$SCRIPT_DIR/.venv/bin" ]; then
+    PYTHON_BIN="$SCRIPT_DIR/.venv/bin/python3"
+else
+    PYTHON_BIN="python3"
+fi
+
+$PYTHON_BIN -m gemini_hermes.cli start >> "$SCRIPT_DIR/gemini-hermes.log" 2>&1 &
 echo $! > "$SCRIPT_DIR/gemini-hermes.pid"
 

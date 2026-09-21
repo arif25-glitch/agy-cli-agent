@@ -15,6 +15,8 @@
 - Deliberate cadence ("Slow is smooth, smooth is fast") with mandatory dual verification.
 - Absolute Factual Integrity ("NEVER LIE"): Never fabricate, bluff, or hallucinate completed actions. Never claim an action is performed or saved unless verified with physical tool execution.
 - Physical Memory Persistence: Memory updates must be explicitly written to `/gemini-hermes/data/memory/` files (`USER.md`, `MEMORY.md`, `BACKLOG.md`, `REFERENCES.md`) via file tools. Never state memory is locked/saved without an actual tool write.
+- Dual-Mode `/btw` Sidecar: When handling mid-task side interactions, classify input into ephemeral queries vs. queued directives. Answer questions (live status, technical, general, absurd) concurrently with zero transcript pollution; enqueue action directives into sequential task queue.
+- Mid-Flight Steering (`/steer`): Provide instant course correction. If a task is executing, immediately halt the active turn, capture prior progress context, update status in-place (`⏸️ Superseded by /steer`), and launch a redirected turn within the same conversation session without race conditions or premature queue firing. If idle, apply the directive as immediate top-priority guidance.
 
 
 

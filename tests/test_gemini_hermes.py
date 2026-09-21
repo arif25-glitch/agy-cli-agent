@@ -27,7 +27,7 @@ from gemini_hermes.gateway.formatter import (
 class TestConfig(unittest.TestCase):
     def test_default_config(self):
         cfg = Config()
-        self.assertEqual(cfg.app_version, "1.4.2")
+        self.assertEqual(cfg.app_version, "1.4.3")
 
         self.assertGreaterEqual(cfg.forwarder_timeout, 300.0)
         self.assertGreaterEqual(cfg.inactivity_timeout, 60.0)
@@ -393,6 +393,340 @@ class TestZeroStatusSpam(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Final output with edit failure fallback.", sent_final_text)
 
 
+class TestBtwDualMode(unittest.IsolatedAsyncioTestCase):
+    """
+    Dual Verification Test Suite for /btw Dual-Mode (Live Telemetry, Ephemeral Q&A, and Task Queue).
+    Tests Intent Classification, Positive Paths (Live telemetry, Ephemeral Q&A, Queued task),
+    and Negative Paths (Query failure fallback, empty query, edit fallback).
+    """
+
+    def test_classify_btw_intent(self):
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+        bot = TelegramBot(token="12345:fake_token_for_test")
+
+        # Live status
+        intent, q = bot._classify_btw_intent("what are you doing now?")
+        self.assertEqual(intent, "live_status")
+        intent, q = bot._classify_btw_intent("where are you at?")
+        self.assertEqual(intent, "live_status")
+        intent, q = bot._classify_btw_intent("sedang apa")
+        self.assertEqual(intent, "live_status")
+
+        # Questions (general knowledge, absurd, technical)
+        intent, q = bot._classify_btw_intent("why is the sky blue?")
+        self.assertEqual(intent, "question")
+        intent, q = bot._classify_btw_intent("who won the 1998 world cup?")
+        self.assertEqual(intent, "question")
+        intent, q = bot._classify_btw_intent("explain closures in javascript")
+        self.assertEqual(intent, "question")
+        intent, q = bot._classify_btw_intent("what is the port for PostgreSQL?")
+        self.assertEqual(intent, "question")
+
+        # Explicit Question Prefixes
+        intent, q = bot._classify_btw_intent("? can dogs eat cheese")
+        self.assertEqual(intent, "question")
+        self.assertEqual(q, "can dogs eat cheese")
+        intent, q = bot._classify_btw_intent("q: what is 42")
+        self.assertEqual(intent, "question")
+        self.assertEqual(q, "what is 42")
+
+        # Tasks / Directives to queue
+        intent, q = bot._classify_btw_intent("after this, write a comprehensive test suite")
+        self.assertEqual(intent, "task")
+        intent, q = bot._classify_btw_intent("run npm test")
+        self.assertEqual(intent, "task")
+        intent, q = bot._classify_btw_intent("build and deploy to vercel")
+        self.assertEqual(intent, "task")
+
+        # Explicit Task Prefixes
+        intent, q = bot._classify_btw_intent("queue: refactor database models")
+        self.assertEqual(intent, "task")
+        self.assertEqual(q, "refactor database models")
+        intent, q = bot._classify_btw_intent("task: add docstrings to telegram_bot.py")
+        self.assertEqual(intent, "task")
+        self.assertEqual(q, "add docstrings to telegram_bot.py")
+
+    async def test_positive_live_telemetry_inquiry(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=301)
+
+        # Simulate active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._active_tasks[777] = mock_task
+        bot._active_task_info[777] = {
+            "text": "Scaffold Next.js application with Tailwind",
+            "last_action": "running 'npx create-next-app'",
+            "start_time": 1000.0,
+            "user_id": 999,
+        }
+
+        await bot.handle_btw(chat_id=777, user_id=999, text="what are you doing now?")
+
+        bot.send_message.assert_called_once()
+        msg_text = bot.send_message.call_args[0][1]
+        self.assertIn("Side Query (Live Task Telemetry)", msg_text)
+        self.assertIn("Scaffold Next.js", msg_text)
+        self.assertIn("running 'npx create-next-app'", msg_text)
+        self.assertIn("Actively executing in background", msg_text)
+        # Task should remain active
+        self.assertIn(777, bot._active_tasks)
+
+    async def test_positive_ephemeral_side_question(self):
+        from unittest.mock import AsyncMock, MagicMock
+        import asyncio
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=401)
+        bot.edit_message_text = AsyncMock(return_value=True)
+        bot.forwarder.ask_quick = AsyncMock(return_value="The sky is blue due to Rayleigh scattering.")
+
+        # Simulate active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._active_tasks[777] = mock_task
+        bot._active_task_info[777] = {
+            "text": "Building production Docker image",
+            "last_action": "docker build -t app:latest .",
+            "start_time": 1000.0,
+            "user_id": 999,
+        }
+
+        await bot.handle_btw(chat_id=777, user_id=999, text="why is the sky blue?")
+
+        # Let the background ephemeral task finish
+        await asyncio.sleep(0.05)
+
+        bot.forwarder.ask_quick.assert_called_once()
+        prompt_passed = bot.forwarder.ask_quick.call_args[0][0]
+        self.assertIn("why is the sky blue?", prompt_passed)
+        self.assertIn("Building production Docker image", prompt_passed)
+
+        # Verified placeholder sent, then edited with answer
+        bot.send_message.assert_called_once()
+        bot.edit_message_text.assert_called_once()
+        final_text = bot.edit_message_text.call_args[0][2]
+        self.assertIn("Side Answer (/btw)", final_text)
+        self.assertIn("Rayleigh scattering", final_text)
+        self.assertIn("Primary task continues running in background", final_text)
+
+        # Primary task is intact and no items in task queue
+        self.assertEqual(len(bot._task_queues.get(777, [])), 0)
+        self.assertIn(777, bot._active_tasks)
+
+    async def test_positive_task_queueing(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=501)
+
+        # Simulate active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._active_tasks[777] = mock_task
+        bot._active_task_info[777] = {
+            "text": "Compiling Rust binary",
+            "last_action": "cargo build --release",
+            "start_time": 1000.0,
+            "user_id": 999,
+        }
+
+        await bot.handle_btw(chat_id=777, user_id=999, text="after this, write comprehensive unit tests")
+
+        # Queued in _task_queues
+        self.assertIn(777, bot._task_queues)
+        self.assertEqual(len(bot._task_queues[777]), 1)
+        self.assertEqual(bot._task_queues[777][0], "after this, write comprehensive unit tests")
+
+        bot.send_message.assert_called_once()
+        msg_text = bot.send_message.call_args[0][1]
+        self.assertIn("Queued Task for Later Execution (/btw)", msg_text)
+        self.assertIn("#1", msg_text)
+
+    async def test_negative_ephemeral_query_failure_fallback(self):
+        from unittest.mock import AsyncMock, MagicMock
+        import asyncio
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=601)
+        bot.edit_message_text = AsyncMock(return_value=True)
+        # Mock engine failure / timeout returning empty string
+        bot.forwarder.ask_quick = AsyncMock(return_value="")
+
+        # Simulate active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._active_tasks[777] = mock_task
+        bot._active_task_info[777] = {
+            "text": "Running migration scripts",
+            "last_action": "alembic upgrade head",
+            "start_time": 1000.0,
+            "user_id": 999,
+        }
+
+        await bot.handle_btw(chat_id=777, user_id=999, text="who won the 1998 world cup?")
+        await asyncio.sleep(0.05)
+
+        # Fallback message sent, gracefully explaining engine timeout
+        bot.edit_message_text.assert_called_once()
+        final_text = bot.edit_message_text.call_args[0][2]
+        self.assertIn("Unable to retrieve side answer at this moment", final_text)
+        self.assertIn("The primary task continues running unaffected", final_text)
+        # Active task was never interrupted
+        self.assertIn(777, bot._active_tasks)
+
+    async def test_negative_empty_query_help(self):
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=701)
+
+        await bot.handle_btw(chat_id=777, user_id=999, text="   ")
+        bot.send_message.assert_called_once()
+        msg_text = bot.send_message.call_args[0][1]
+        self.assertIn("Usage of `/btw`", msg_text)
+
+
+class TestSteerCommand(unittest.IsolatedAsyncioTestCase):
+    """
+    Dual Verification Test Suite for /steer command.
+    Covers Positive Paths (Mid-flight task interception, Idle steering) and
+    Negative Paths (Empty directive guide, Steered cancellation race condition suppression).
+    """
+
+    async def test_positive_midflight_steering_interception(self):
+        from unittest.mock import AsyncMock, MagicMock
+        import asyncio
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=801)
+        bot.handle_chat_message = AsyncMock()
+
+        # Simulate active running task
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        bot._active_tasks[555] = mock_task
+        bot._active_task_info[555] = {
+            "text": "Generate database migrations with alembic",
+            "last_action": "writing migration script 001_init.py",
+            "start_time": 1000.0,
+            "user_id": 999,
+        }
+
+        await bot.handle_steer(chat_id=555, user_id=999, text="Stop alembic, use Prisma schema migrations instead")
+
+        # 1. Old task must be cancelled
+        mock_task.cancel.assert_called_once()
+
+        # 2. Confirmation message sent
+        bot.send_message.assert_called_once()
+        msg = bot.send_message.call_args[0][1]
+        self.assertIn("Course Correction (Steering Applied)", msg)
+        self.assertIn("writing migration script 001_init.py", msg)
+        self.assertIn("Stop alembic, use Prisma schema migrations instead", msg)
+
+        # 3. New steered task started with structured steering directive
+        bot.handle_chat_message.assert_called_once()
+        steer_prompt = bot.handle_chat_message.call_args[0][2]
+        self.assertIn("[USER STEERING DIRECTIVE]", steer_prompt)
+        self.assertIn("Previous Objective: Generate database migrations with alembic", steer_prompt)
+        self.assertIn("Status Before Steering: writing migration script 001_init.py", steer_prompt)
+        self.assertIn("Stop alembic, use Prisma schema migrations instead", steer_prompt)
+
+    async def test_positive_idle_steering(self):
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=802)
+        bot.handle_chat_message = AsyncMock()
+
+        # No active task running
+        await bot.handle_steer(chat_id=555, user_id=999, text="Refactor the authentication module to JWT")
+
+        # 1. Confirmation message sent
+        bot.send_message.assert_called_once()
+        msg = bot.send_message.call_args[0][1]
+        self.assertIn("Steering Directive Applied", msg)
+        self.assertIn("Refactor the authentication module to JWT", msg)
+
+        # 2. Steered task launched directly
+        bot.handle_chat_message.assert_called_once()
+        steer_prompt = bot.handle_chat_message.call_args[0][2]
+        self.assertIn("[USER STEERING DIRECTIVE]", steer_prompt)
+        self.assertIn("Refactor the authentication module to JWT", steer_prompt)
+
+    async def test_negative_empty_directive_guidance(self):
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=803)
+        bot.handle_chat_message = AsyncMock()
+
+        await bot.handle_steer(chat_id=555, user_id=999, text="   ")
+
+        # Should send usage guide and NOT launch any task
+        bot.send_message.assert_called_once()
+        msg = bot.send_message.call_args[0][1]
+        self.assertIn("Usage of `/steer`", msg)
+        self.assertIn("Mid-Flight Intervention", msg)
+        self.assertIn("Direct Guidance", msg)
+        bot.handle_chat_message.assert_not_called()
+
+    async def test_negative_steered_cancellation_suppresses_generic_cancel_and_queue_race(self):
+        from unittest.mock import AsyncMock
+        import asyncio
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=804)
+        bot.edit_message_text = AsyncMock(return_value=True)
+
+        # Simulate a stream that blocks until cancelled
+        async def hanging_stream(prompt, conv_id=None):
+            await asyncio.sleep(10.0)
+            yield None
+
+        bot.forwarder.forward_stream = hanging_stream
+        bot.send_chat_action = AsyncMock()
+
+        # Pre-queue a task in _task_queues
+        bot._task_queues[555] = ["queued task 1"]
+
+        # Run task in background
+        task = asyncio.create_task(bot.handle_chat_message(555, 999, "Long running build"))
+        await asyncio.sleep(0.05)
+
+        # Mark as steered before cancelling
+        bot._active_task_info[555]["steered"] = True
+        task.cancel()
+
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+
+        # Verify:
+        # 1. No generic "Operation Cancelled" was sent
+        for call in bot.send_message.call_args_list:
+            text = call[0][1]
+            self.assertNotIn("🛑 *Operation Cancelled.*", text)
+
+        # 2. Queued task was NOT popped or run prematurely
+        self.assertEqual(len(bot._task_queues[555]), 1)
+        self.assertEqual(bot._task_queues[555][0], "queued task 1")
+
+
 if __name__ == "__main__":
     unittest.main()
+
 

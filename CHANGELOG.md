@@ -5,6 +5,21 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.3] - 2026-09-21
+
+### Added
+- **/steer Command (Mid-Flight Course Correction & Immediate Intervention)**: Added `/steer <instruction>` allowing the user to immediately intervene and redirect the agent mid-flight during active tasks or provide high-priority guidance when idle.
+- **Context-Preserving Steering Prompting**: Seamlessly halts the active subprocess/turn, captures previous task objective & current action, and synthesizes an authoritative `[USER STEERING DIRECTIVE]` resuming within the same conversation session without context loss.
+- **Dual Verification Test Suite for /steer**: Added `TestSteerCommand` in `tests/test_gemini_hermes.py` covering:
+  * `test_positive_midflight_steering_interception`: Verifies active task cancellation, steering notification, and structured directive handoff.
+  * `test_positive_idle_steering`: Verifies direct steering execution when no task is running.
+  * `test_negative_empty_directive_guidance`: Verifies graceful usage instructions when called with empty input.
+  * `test_negative_steered_cancellation_suppresses_generic_cancel_and_queue_race`: Verifies that steered task cancellation suppresses generic cancellation messages, updates status message in-place (`⏸️ Superseded by /steer`), and prevents queued tasks from prematurely firing.
+
+### Changed
+- **Task Cancellation & Race Condition Hardening**: Hardened `handle_chat_message` `except asyncio.CancelledError` and `finally` blocks to distinguish between user `/cancel` vs `/steer` interventions, preventing task queue race conditions.
+- **Enhanced Busy Notice**: Polished Telegram busy notification to explicitly highlight `/steer <new direction>` alongside `/btw` and `/cancel`.
+
 ## [1.4.2] - 2026-09-21
 
 ### Added

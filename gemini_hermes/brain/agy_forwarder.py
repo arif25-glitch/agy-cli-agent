@@ -248,3 +248,44 @@ class AgyForwarder:
                     response="".join(accumulated_text),
                     error=str(e),
                 )
+
+    async def ask_quick(self, prompt: str, timeout: float = 35.0) -> str:
+        """
+        Executes a fast, one-shot, tool-free ephemeral query via agy CLI.
+        Used for /btw side questions without polluting conversation history.
+        """
+        cmd = [
+            self.agy_bin,
+            "-p",
+            prompt,
+            "--effort",
+            "low",
+        ]
+        if self.dangerously_skip_permissions:
+            cmd.append("--dangerously-skip-permissions")
+
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            if proc.returncode == 0:
+                return stdout.decode("utf-8", errors="replace").strip()
+            else:
+                err = stderr.decode("utf-8", errors="replace").strip()
+                logger.error(f"ask_quick error (code {proc.returncode}): {err}")
+                return ""
+        except asyncio.TimeoutError:
+            try:
+                proc.kill()
+                await proc.wait()
+            except Exception:
+                pass
+            logger.warning(f"ask_quick timed out after {timeout}s")
+            return ""
+        except Exception as e:
+            logger.error(f"ask_quick unexpected exception: {e}")
+            return ""
+

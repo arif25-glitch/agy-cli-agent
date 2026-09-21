@@ -120,7 +120,8 @@ Gemini-Hermes features 9 modular procedures conforming to the `agentskills.io` s
 | `/help` | Complete reference manual of features and commands |
 | `/new` or `/reset` | Clear conversation thread, purge task queues, and begin fresh session |
 | `/status` | View engine health, active conversation ID, turns, token counts, and indexed projects |
-| `/btw <msg>` | Query live telemetry or queue follow-up directives while an operation runs |
+| `/btw <msg>` | Query live telemetry, ask side trivia, or queue follow-up directives while an operation runs |
+| `/steer <instruction>` | Immediately course-correct or redirect the agent mid-flight (or apply focused direction if idle) |
 | `/queue` | View active background task status and pending `/btw` queued items |
 | `/cancel` | Safely abort ongoing background tasks and clear pending queues |
 | `/projects` | List all bookmarked projects, status, and repository paths |

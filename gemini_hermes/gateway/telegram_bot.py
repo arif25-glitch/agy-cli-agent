@@ -205,6 +205,7 @@ class TelegramBot:
             f"• `/project_add <name> <path>` - Bookmark a new active project into persistent state.\n"
             f"• `/project_task <id> <task>` - Add a new task or milestone to a project.\n"
             f"• `/btw <note/query>` - Ask a side question, steer, or queue a task while an operation is running.\n"
+            f"• `/steer <instruction>` - Immediately redirects or course-corrects the agent (mid-flight or idle).\n"
             f"• `/queue` - View active task and pending /btw queue.\n"
             f"• `/cancel` - Abort the active background task and clear the queue.\n"
             f"• `/exec <command>` - Runs a shell command on the host machine and streams the output.\n"
@@ -401,26 +402,162 @@ class TelegramBot:
         else:
             await self.send_message(chat_id, result)
 
+    def _classify_btw_intent(self, text: str) -> tuple[str, str]:
+        """
+        Classifies /btw input into ('live_status' | 'question' | 'task', clean_query).
+        Supports explicit prefixes and natural language heuristics.
+        """
+        raw = text.strip()
+        lower = raw.lower()
+
+        # Explicit prefix overrides
+        if lower.startswith("?") or lower.startswith("q:") or lower.startswith("ask:") or lower.startswith("query:"):
+            for prefix in ("?", "q:", "ask:", "query:"):
+                if lower.startswith(prefix):
+                    clean = raw[len(prefix):].strip()
+                    return ("question", clean or raw)
+        if lower.startswith(("queue:", "task:", "todo:", "do:", "later:")):
+            for prefix in ("queue:", "task:", "todo:", "do:", "later:"):
+                if lower.startswith(prefix):
+                    clean = raw[len(prefix):].strip()
+                    return ("task", clean or raw)
+
+        # Status / live telemetry inquiry
+        status_keywords = [
+            "where are you", "what are you doing", "what are u doing", "where r u",
+            "progress", "status", "how is it going", "how's it going", "sedang apa",
+            "lagi apa", "sampai mana", "current step", "what step",
+            "working on", "how far", "is it done", "are you done"
+        ]
+        if any(k in lower for k in status_keywords):
+            return ("live_status", raw)
+
+        # Explicit task steering / sequence keywords
+        task_indicators = (
+            "after this", "then ", "next ", "also do", "queue ",
+            "setelah ini", "nanti ", "tolong ", "please make sure",
+            "remember to", "make sure to", "ensure that", "run ",
+            "build ", "deploy ", "create ", "add ", "implement ",
+            "fix ", "test ", "install "
+        )
+        if not raw.endswith("?") and any(lower.startswith(ind) for ind in task_indicators):
+            return ("task", raw)
+
+        # Question indicators
+        question_words = (
+            "what", "why", "how", "who", "when", "where", "which",
+            "is", "are", "can", "could", "would", "should", "do", "does", "did",
+            "explain", "describe", "tell me", "summarize",
+            "apakah", "kenapa", "mengapa", "siapa", "gimana", "bagaimana", "adakah"
+        )
+        first_word = lower.split()[0] if lower.split() else ""
+        if raw.endswith("?") or first_word in question_words:
+            return ("question", raw)
+
+        # Default fallback: treat as task queue
+        return ("task", raw)
+
+    async def _handle_btw_ephemeral_question(
+        self,
+        chat_id: int,
+        query: str,
+        task_preview: Optional[str] = None,
+        last_action: Optional[str] = None,
+    ):
+        """
+        Executes an ephemeral, side-channel question in parallel without interrupting
+        or polluting the primary background task's context window.
+        """
+        try:
+            placeholder_text = f"💬 *Side Question (/btw):*\n_{query}_\n\n⏳ _Consulting proxy engine..._"
+            msg_id = await self.send_message(chat_id, placeholder_text)
+
+            task_clause = ""
+            if task_preview:
+                task_clause = (
+                    f"\nBackground Context: The user is currently running an active operation: '{task_preview}'. "
+                    f"Current operation step is '{last_action or 'executing'}'. "
+                    f"If the question inquires about this operation, incorporate this context.\n"
+                )
+
+            prompt = (
+                f"You are Gemini-Hermes, answering an ephemeral side query (/btw) on Telegram.{task_clause}\n"
+                f"User Question: {query}\n\n"
+                f"Instructions:\n"
+                f"- Answer concisely, directly, and accurately.\n"
+                f"- If it's a general knowledge, absurd, or technical question, answer helpfully and engagingly.\n"
+                f"- Do NOT attempt to run tools or commands.\n"
+                f"- Keep formatting clean and readable for mobile Telegram."
+            )
+
+            raw_answer = await self.forwarder.ask_quick(prompt, timeout=35.0)
+
+            if not raw_answer or not raw_answer.strip():
+                final_text = (
+                    f"💬 *Side Answer (/btw):*\n_{query}_\n\n"
+                    f"⚠️ _Unable to retrieve side answer at this moment (engine timeout or busy)._\n\n"
+                    f"_The primary task continues running unaffected._"
+                )
+            else:
+                formatted_body = format_hermes_output(raw_answer.strip())
+                status_footer = (
+                    f"\n\n_Primary task continues running in background._"
+                    if task_preview
+                    else ""
+                )
+                final_text = f"💬 *Side Answer (/btw):*\n_{query}_\n\n{formatted_body}{status_footer}"
+
+            if msg_id:
+                edited = await self.edit_message_text(chat_id, msg_id, final_text)
+                if not edited:
+                    await self.send_message(chat_id, final_text)
+            else:
+                await self.send_message(chat_id, final_text)
+
+        except Exception as e:
+            logger.error(f"Error handling ephemeral /btw question: {e}", exc_info=True)
+            fallback = (
+                f"💬 *Side Answer (/btw):*\n"
+                f"⚠️ _An error occurred while answering your side question._\n\n"
+                f"_The primary task continues running unaffected._"
+            )
+            await self.send_message(chat_id, fallback)
+
     async def handle_btw(self, chat_id: int, user_id: int, text: str):
         query = text.strip()
         if not query:
             await self.send_message(
                 chat_id,
-                "ℹ️ *Usage of `/btw`:*\n"
-                "• *Side quest / live status:* `/btw where are you now?`\n"
-                "• *Steer active task:* `/btw remember to use Tailwind and SQLite`\n"
-                "• *Queue next task:* `/btw after this, write a comprehensive README.md`",
+                "ℹ️ *Usage of `/btw`:*\n\n"
+                "• *Side questions & trivia:* `/btw why is the sky blue?` or `/btw ? what is TCP?`\n"
+                "• *Live status check:* `/btw what are you doing now?`\n"
+                "• *Queue next task:* `/btw after this, write tests` or `/btw task: deploy app`\n\n"
+                "_Side questions run in parallel without interrupting or polluting active tasks._",
             )
             return
 
+        intent, clean_query = self._classify_btw_intent(query)
         is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
 
         if not is_running:
-            # No task currently running - execute directly as a chat message
-            await self.send_message(chat_id, f"💡 *Executing `/btw` directly:* `{query}`")
-            task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, query))
-            self._active_tasks[chat_id] = task
-            return
+            if intent == "live_status":
+                await self.send_message(
+                    chat_id,
+                    "ℹ️ *Status:* No background task is currently running. I am idle and ready for requests!",
+                )
+                return
+            elif intent == "question":
+                # Execute as an ephemeral side question
+                asyncio.create_task(
+                    self._handle_btw_ephemeral_question(chat_id, clean_query)
+                )
+                return
+            else:
+                # Task intent: execute directly as a chat message
+                await self.send_message(chat_id, f"💡 *Executing `/btw` task directly:* `{clean_query}`")
+                task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, clean_query))
+                self._active_tasks[chat_id] = task
+                return
 
         # An active task is currently running in background
         info = self._active_task_info.get(chat_id, {})
@@ -432,19 +569,7 @@ class TelegramBot:
         if len(task_preview) > 75:
             task_preview = task_preview[:72] + "..."
 
-        query_lower = query.lower()
-        status_keywords = [
-            "where are you", "what are you", "what are u", "where r u",
-            "progress", "status", "how is", "how's", "sedang apa",
-            "lagi apa", "sampai mana", "current step", "doing",
-            "working on", "update", "how far", "is it done"
-        ]
-        is_inquiry = any(k in query_lower for k in status_keywords) or (
-            query.endswith("?") and any(w in query_lower for w in ["now", "current", "step", "you", "task", "job", "doing"])
-        )
-
-        if is_inquiry:
-            # Side Quest: Real-time telemetry response without stopping the primary background task
+        if intent == "live_status":
             status_text = (
                 f"💬 *Side Query (Live Task Telemetry):*\n\n"
                 f"• *Primary Task:* `{task_preview}`\n"
@@ -456,20 +581,114 @@ class TelegramBot:
             await self.send_message(chat_id, status_text)
             return
 
-        # Steering directive or Queued Task
-        if chat_id not in self._task_queues:
-            self._task_queues[chat_id] = []
-        self._task_queues[chat_id].append(query)
-        q_pos = len(self._task_queues[chat_id])
+        elif intent == "question":
+            # Ephemeral side question executed concurrently in background
+            asyncio.create_task(
+                self._handle_btw_ephemeral_question(
+                    chat_id,
+                    clean_query,
+                    task_preview=task_preview,
+                    last_action=last_action,
+                )
+            )
+            return
 
-        reply_text = (
-            f"📥 *Received Side Note / Task (/btw):*\n"
-            f"`{query}`\n\n"
-            f"• *Primary Task:* Continues in background ({last_action})\n"
-            f"• *Action:* Queued at position `#{q_pos}`\n"
-            f"• *Execution:* I will evaluate and execute this steering instruction immediately once the active operation completes!"
-        )
-        await self.send_message(chat_id, reply_text)
+        else:
+            # Steering directive or Queued Task
+            if chat_id not in self._task_queues:
+                self._task_queues[chat_id] = []
+            self._task_queues[chat_id].append(clean_query)
+            q_pos = len(self._task_queues[chat_id])
+
+            reply_text = (
+                f"📥 *Queued Task for Later Execution (/btw):*\n"
+                f"`{clean_query}`\n\n"
+                f"• *Primary Task:* Continues in background ({last_action})\n"
+                f"• *Queue Position:* `#{q_pos}`\n"
+                f"• *Execution:* Will automatically run as soon as the active operation completes!"
+            )
+            await self.send_message(chat_id, reply_text)
+
+    async def handle_steer(self, chat_id: int, user_id: int, text: str):
+        directive = text.strip()
+        if not directive:
+            await self.send_message(
+                chat_id,
+                "🧭 *Usage of `/steer`:*\n\n"
+                "Use `/steer <instruction>` to immediately redirect or change the agent's course of action.\n\n"
+                "• *Mid-Flight Intervention:* If an operation is running, `/steer <new direction>` instantly halts the active step and pivots to your new instructions within the same conversation.\n"
+                "• *Direct Guidance:* If idle, `/steer <directive>` executes your instructions with high steering priority.\n\n"
+                "*Examples:*\n"
+                "• `/steer Stop creating Postgres tables, use SQLite with Prisma instead`\n"
+                "• `/steer Switch focus to writing unit tests first`\n"
+                "• `/steer Keep current backend code, but change UI to dark mode`",
+            )
+            return
+
+        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
+
+        if is_running:
+            info = self._active_task_info.get(chat_id, {})
+            info["steered"] = True
+            last_action = info.get("last_action", "Executing operation...")
+            task_prompt = info.get("text", "")
+            task_preview = task_prompt.splitlines()[0] if task_prompt else "Ongoing operation"
+            if len(task_preview) > 75:
+                task_preview = task_preview[:72] + "..."
+
+            # Cancel running task
+            curr_task = self._active_tasks.get(chat_id)
+            if curr_task and not curr_task.done():
+                curr_task.cancel()
+
+            # Brief pause to allow cancellation cleanup to propagate
+            await asyncio.sleep(0.1)
+
+            steer_prompt = (
+                f"[USER STEERING DIRECTIVE]\n"
+                f"The user has explicitly intervened to steer and redirect your course of action.\n\n"
+                f"• Previous Objective: {task_preview}\n"
+                f"• Status Before Steering: {last_action}\n"
+                f"• New Steering Direction: {directive}\n\n"
+                f"Operating Instructions:\n"
+                f"1. Immediately adopt the new steering direction above.\n"
+                f"2. Stop and discard any previous sub-tasks, plans, or assumptions that conflict with this directive.\n"
+                f"3. Acknowledge the course correction concisely and proceed to execute the new direction directly."
+            )
+
+            await self.send_message(
+                chat_id,
+                f"🧭 *Course Correction (Steering Applied)*\n\n"
+                f"• *Previous Action:* `{last_action}` (redirected)\n"
+                f"• *New Direction:* `{directive}`\n\n"
+                f"_Pivoting immediately into the updated direction..._",
+            )
+
+            new_task = asyncio.create_task(
+                self.handle_chat_message(chat_id, user_id, steer_prompt)
+            )
+            self._active_tasks[chat_id] = new_task
+            return
+        else:
+            steer_prompt = (
+                f"[USER STEERING DIRECTIVE]\n"
+                f"The user has provided an explicit steering directive:\n"
+                f"{directive}\n\n"
+                f"Operating Instructions:\n"
+                f"1. Adopt this direction as top priority.\n"
+                f"2. Proceed to execute according to this directive."
+            )
+
+            await self.send_message(
+                chat_id,
+                f"🧭 *Steering Directive Applied:*\n`{directive}`\n\n_Executing with updated steering focus..._",
+            )
+
+            task = asyncio.create_task(
+                self.handle_chat_message(chat_id, user_id, steer_prompt)
+            )
+            self._active_tasks[chat_id] = task
+            return
 
     async def handle_queue(self, chat_id: int):
         q = self._task_queues.get(chat_id, [])
@@ -685,12 +904,19 @@ class TelegramBot:
                     await self.send_message(chat_id, chunk)
 
         except asyncio.CancelledError:
-            logger.info(f"Task for chat_id={chat_id} was cancelled by user.")
-            cancel_msg = "🛑 *Operation Cancelled.*\nThe ongoing request was stopped."
-            if status_message_ref[0]:
-                await self.edit_message_text(chat_id, status_message_ref[0], cancel_msg)
+            logger.info(f"Task for chat_id={chat_id} was cancelled.")
+            info = self._active_task_info.get(chat_id, {})
+            was_steered = info.get("steered", False)
+            if was_steered:
+                steer_halt_note = f"⏸️ *Superseded by `/steer`:* `{last_active_action or 'Previous operation'}` halted."
+                if status_message_ref[0]:
+                    await self.edit_message_text(chat_id, status_message_ref[0], steer_halt_note)
             else:
-                await self.send_message(chat_id, cancel_msg)
+                cancel_msg = "🛑 *Operation Cancelled.*\nThe ongoing request was stopped."
+                if status_message_ref[0]:
+                    await self.edit_message_text(chat_id, status_message_ref[0], cancel_msg)
+                else:
+                    await self.send_message(chat_id, cancel_msg)
             raise
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
@@ -705,11 +931,17 @@ class TelegramBot:
                 typing_task.cancel()
             if not tool_heartbeat_task.done():
                 tool_heartbeat_task.cancel()
-            self._active_tasks.pop(chat_id, None)
-            self._active_task_info.pop(chat_id, None)
 
-            # Check if there is a queued /btw task
-            if chat_id in self._task_queues and self._task_queues[chat_id]:
+            info = self._active_task_info.get(chat_id, {})
+            was_steered = info.get("steered", False)
+
+            if self._active_tasks.get(chat_id) is curr_task:
+                self._active_tasks.pop(chat_id, None)
+            if not was_steered:
+                self._active_task_info.pop(chat_id, None)
+
+            # Check if there is a queued /btw task (only if not steered)
+            if not was_steered and chat_id in self._task_queues and self._task_queues[chat_id]:
                 next_task_text = self._task_queues[chat_id].pop(0)
                 logger.info(f"Triggering next queued task for chat_id={chat_id}: {next_task_text[:50]}")
                 asyncio.create_task(self._run_queued_task(chat_id, user_id, next_task_text))
@@ -744,7 +976,8 @@ class TelegramBot:
                 chat_id,
                 "⏳ *Still processing...*\n\n"
                 "I am currently working on your previous request. You can:\n"
-                "• Ask a side question, steer, or queue a task with `/btw <message>`\n"
+                "• Course-correct immediately with `/steer <new direction>`\n"
+                "• Ask a side question or queue a task with `/btw <message>`\n"
                 "• Check live status with `/status`\n"
                 "• View task queue with `/queue`\n"
                 "• Type `/cancel` to abort or `/reset` to start fresh."
@@ -839,6 +1072,8 @@ class TelegramBot:
                 )
             elif cmd == "/btw":
                 await self.handle_btw(chat_id, user_id, arg)
+            elif cmd in ("/steer", "/steer:"):
+                await self.handle_steer(chat_id, user_id, arg)
             elif cmd == "/queue":
                 await self.handle_queue(chat_id)
             elif cmd == "/cancel":
