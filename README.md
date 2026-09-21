@@ -1,13 +1,14 @@
-# 🪐 Gemini-Hermes AI Agent `v1.4.2`
+# 🪐 Gemini-Hermes AI Agent `v1.5.0`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.4.2 Highlights:**
-> - **Telegram Status Message Aggregation (Zero Status Spam)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter and chat push.
-> - **task_watcher Procedural Skill**: Packaged modular procedure enforcing zero premature exits on asynchronous jobs (`npm run build`, asset generation, compilers) with active monitoring and verification.
-> - **Rigorous Dual Verification Suite**: Added automated tests for happy-path in-place editing and fault-tolerant fallback recovery when message edits are rejected.
-> - **Expanded Skills Catalog**: Expanded active builtin modular procedures from 8 to 9.
-
+> **Release v1.5.0 Highlights:**
+> - **Tiered Quality Memory Architecture**: Structured separation between fast in-prompt working context ("Hot Memory") and permanent on-disk archives ("Warm Memory" in `data/memory/archive/BACKLOG_ARCHIVE.md`), preventing attention dilution while retaining 100% of historical milestones.
+> - **Dynamic Hot Backlog Capping**: In-prompt working context automatically preserves 100% of active tasks `[ ]` while dynamically capping resolved items `[x]` to the 4–5 most recent entries with off-prompt archival pointers.
+> - **Telegram `/compact` Command**: One-touch memory compaction and pruning command reporting live telemetry (archived tasks, hot memory tokens, total disk persistence).
+> - **Mid-Flight Steering (`/steer`)**: Immediate course-correction command that cleanly halts active turns, captures progress context, and restarts execution along new parameters without race conditions.
+> - **Zero Status Spam (In-Place Status Editing)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter.
+> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, and gateway dispatch (39 passing unit/integration tests).
 
 ---
 
@@ -17,7 +18,7 @@ Gemini-Hermes follows a Direct Autonomous Orchestrator body-brain design:
 
 ```mermaid
 flowchart TD
-    User([Telegram User]) <-->|Messages, Media & /btw Commands| TG[Telegram Gateway\n(Long Polling / httpx / Formatter)]
+    User([Telegram User]) <-->|Messages, Media, /btw & /steer| TG[Telegram Gateway\n(Long Polling / httpx / Formatter)]
     
     subgraph Gemini-Hermes Core [Gemini-Hermes Execution Engine]
         TG --> Router[Message Router & Concurrency Guard]
@@ -25,13 +26,15 @@ flowchart TD
         Queue --> PromptEngine[Prompt & Persona Engine]
         
         subgraph Persistent State Layer
-            MemStore[(Modular Memory Layer\nMEMORY.md, USER.md,\nBACKLOG.md, REFERENCES.md)]
+            MemStore[(Hot Working Memory\nMEMORY.md, USER.md,\nBACKLOG.md, REFERENCES.md)]
+            Archive[(Warm Memory Archive\ndata/memory/archive/)]
             ProjStore[(Project State Index\ndata/projects/projects.json)]
             Skills[(Skills Catalog\n9 Modular Procedures)]
             Sessions[(SessionDB\nTurn Metrics & History)]
         end
         
         MemStore --> PromptEngine
+        Archive -.->|On-Demand Retrieval| PromptEngine
         ProjStore --> PromptEngine
         Skills --> PromptEngine
         Sessions --> PromptEngine
@@ -46,6 +49,7 @@ flowchart TD
 ```
 
 ---
+
 
 ## ✨ Core Features & Hermes Capabilities
 
@@ -69,20 +73,31 @@ flowchart TD
 - **Autonomous Chaining**: Automatically dequeues and executes the queued task immediately once the active operation concludes.
 - **Commands**: `/btw <query>`, `/queue`, `/cancel`.
 
-### 4. Asynchronous Task Monitoring (`task_watcher`)
+### 4. Mid-Flight Course Correction (`/steer`)
+- **Immediate Task Interception**: Cleanly halts an ongoing turn mid-flight when directives change, preventing wasted model execution or unwanted file modifications.
+- **Context-Preserving Transition**: Captures prior task objectives, current action progress, and synthesizes an authoritative `[USER STEERING DIRECTIVE]` resuming seamlessly within the same conversation session without race conditions.
+- **Idle Direct Execution**: When idle, `/steer <instruction>` immediately executes the directive as a top-priority command.
+- **Commands**: `/steer <instruction>`.
+
+### 5. Asynchronous Task Monitoring (`task_watcher`)
 - **Zero Premature Exits**: Strictly prevents abandoning running builds or operations with premature "running in background" responses.
 - **Active Verification**: Follows background tasks through completion via process monitoring and artifact validation.
 
-### 5. Zero Status Spam (In-Place Message Editing)
+### 6. Zero Status Spam (In-Place Message Editing)
 - **Fluid Telegram UI**: Intermediate tool steps dynamically mutate the current message bubble rather than creating duplicate bubbles in Telegram.
 - **Resilient Fallback**: Gracefully falls back to new messages if Telegram API edit limits or deletions occur.
 
-### 6. Persistent Modular Memory
-- **Domain-Specific Persistence**: Retains operational standards in `MEMORY.md`, user profile in `USER.md`, active task backlog in `BACKLOG.md`, and external references in `REFERENCES.md`.
-- **Dynamic Memory Context**: Structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) are automatically injected into the agent prompt.
-- **Commands**: `/memory`, `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
+### 7. Tiered Quality Memory & Context Hygiene (`/compact`)
+- **Hot Working Context (In-Prompt)**: Dynamic hot memory keeps prompt tokens lean (~2k tokens) by capping resolved milestones to the 4–5 most recent items while retaining 100% of active tasks `[ ]`.
+- **Warm Permanent Archive (On-Disk)**: Older completed tasks and multiline verification logs are moved to `data/memory/archive/BACKLOG_ARCHIVE.md`, preserving deep historical records off-prompt for on-demand tool inspection.
+- **Dynamic Archival Indicators**: If older tasks are archived, prompt context displays a clean pointer (e.g. `- *(+N older completed tasks archived in data/memory/archive/BACKLOG_ARCHIVE.md)*`).
+- **Commands**:
+  - `/compact` — One-touch archival pass that trims resolved tasks from hot context and outputs real-time memory metrics.
+  - `/memory` — Inspect all modular memory files and current token footprint.
+  - `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
-### 7. Deliberate Cadence & Rigorous Dual Verification
+### 8. Deliberate Cadence & Rigorous Dual Verification
+
 - **Slow is Smooth, Smooth is Fast**: Rejects rushed, unverified code changes that create debugging debt.
 - **Dual Verification**: Every feature or procedure must pass both positive (happy path) and negative (error boundary and fallback) testing.
 - **5-Phase Skill Creation Pipeline**:
