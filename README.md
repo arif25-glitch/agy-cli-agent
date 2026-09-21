@@ -1,12 +1,12 @@
-# 🪐 Gemini-Hermes AI Agent `v1.4.1`
+# 🪐 Gemini-Hermes AI Agent `v1.4.2`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.4.1 Highlights:**
-> - **Absolute Factual Integrity ("NEVER LIE")**: Codified Cardinal Directive #8 in system persona, memory templates, and skills enforcing zero-tolerance for fabrication or claiming actions are completed without verified physical tool execution.
-> - **Physical Memory Persistence Enforcement**: Injected physical storage path metadata directly into system prompt context, requiring physical file tool writes on `data/memory/` for all state changes.
-> - **Interactive Memory CLI Suite**: Added `./run.sh memory {show|add-user|add-task|add-memory|add-ref}` and `python3 -m gemini_hermes.cli memory ...` for direct terminal inspection and updates.
-> - **Sanitized Open-Source Production Release**: Fully internationalized all directives to English and sanitized personal contexts for public distribution.
+> **Release v1.4.2 Highlights:**
+> - **Telegram Status Message Aggregation (Zero Status Spam)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter and chat push.
+> - **task_watcher Procedural Skill**: Packaged modular procedure enforcing zero premature exits on asynchronous jobs (`npm run build`, asset generation, compilers) with active monitoring and verification.
+> - **Rigorous Dual Verification Suite**: Added automated tests for happy-path in-place editing and fault-tolerant fallback recovery when message edits are rejected.
+> - **Expanded Skills Catalog**: Expanded active builtin modular procedures from 8 to 9.
 
 
 ---
@@ -27,7 +27,7 @@ flowchart TD
         subgraph Persistent State Layer
             MemStore[(Modular Memory Layer\nMEMORY.md, USER.md,\nBACKLOG.md, REFERENCES.md)]
             ProjStore[(Project State Index\ndata/projects/projects.json)]
-            Skills[(Skills Catalog\n8 Modular Procedures)]
+            Skills[(Skills Catalog\n9 Modular Procedures)]
             Sessions[(SessionDB\nTurn Metrics & History)]
         end
         
@@ -58,10 +58,10 @@ flowchart TD
 - **Persistent Project Bookmarks**: Tracks active and completed projects in `data/projects/projects.json`.
 - **Context Injection**: Project state, paths, tech stacks, and open milestones are automatically surfaced in the cognitive system prompt.
 - **Commands**:
-  - `/projects`: List all indexed projects with status, paths, and stack.
-  - `/project <id>`: View deep architectural notes, tasks, and file locations.
-  - `/project_add <name> <path> [desc]`: Bookmark a new project into persistent state.
-  - `/project_task <id> <task>`: Attach a milestone or task to an indexed project.
+  - `/projects` — List all active and archived projects.
+  - `/project <id>` — View detailed task status, stack, and notes.
+  - `/project_add <name> <path>` — Bookmark a new project into persistent state.
+  - `/project_task <id> <task>` — Attach a task to a project.
 
 ### 3. Side-Conversation & Task Queue (`/btw`)
 - **Side-Quest / Live Telemetry**: Ask progress or status questions while a background task is running (e.g. `/btw where are you now?` or `/btw what are you working on?`). The bot replies instantly with live telemetry without interrupting the primary task.
@@ -69,23 +69,22 @@ flowchart TD
 - **Autonomous Chaining**: Automatically dequeues and executes the queued task immediately once the active operation concludes.
 - **Commands**: `/btw <query>`, `/queue`, `/cancel`.
 
-### 4. Real-Time Status Push ("Bomb Chat")
-- **Live Execution Feedback**: While executing multi-step tools or long tasks, pushes immediate short status messages (`🔨 Currently, <action>...`) throttled at 1.2s.
-- **Clean Chat Lifecycle**: The initial thinking placeholder is automatically deleted on the first tool action, keeping the chat clean and responsive.
-- **Extended Ceilings**: 300-second (5 min) inactivity reset on output, with a 900-second (15 min) overall ceiling for heavy operations.
+### 4. Asynchronous Task Monitoring (`task_watcher`)
+- **Zero Premature Exits**: Strictly prevents abandoning running builds or operations with premature "running in background" responses.
+- **Active Verification**: Follows background tasks through completion via process monitoring and artifact validation.
 
-### 5. Proactive Self-Verification
-- Automatically executes internal sanity checks, consistency reviews, and quality validation before finalizing complex multi-step responses.
+### 5. Zero Status Spam (In-Place Message Editing)
+- **Fluid Telegram UI**: Intermediate tool steps dynamically mutate the current message bubble rather than creating duplicate bubbles in Telegram.
+- **Resilient Fallback**: Gracefully falls back to new messages if Telegram API edit limits or deletions occur.
 
 ### 6. Persistent Modular Memory
 - **Domain-Specific Persistence**: Retains operational standards in `MEMORY.md`, user profile in `USER.md`, active task backlog in `BACKLOG.md`, and external references in `REFERENCES.md`.
 - **Dynamic Memory Context**: Structured XML tags (`<persistent_memory>`, `<user_profile>`, `<active_backlog>`, `<external_references>`) are automatically injected into the agent prompt.
 - **Commands**: `/memory`, `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
-### 7. Deliberate Engineering Cadence & Skill Creation Protocol
-- **Philosophy ("Slow is Smooth, Smooth is Fast")**: Strict prohibition against rushed, messy one-shot implementations. Incremental, milestone-driven execution eliminates post-implementation debugging debt.
-- **Mandatory Dual Verification**: Every feature or procedure must pass both **positive tests** (clean happy-path execution) and **negative tests** (boundary cases, invalid inputs, graceful error handling).
-- **Sensible Polish Autonomy**: Proactive UI/UX enhancements (layout improvements, visual hierarchy, styling, intuitive button placement) are permitted without prompting, provided they never disrupt or complicate core logic.
+### 7. Deliberate Cadence & Rigorous Dual Verification
+- **Slow is Smooth, Smooth is Fast**: Rejects rushed, unverified code changes that create debugging debt.
+- **Dual Verification**: Every feature or procedure must pass both positive (happy path) and negative (error boundary and fallback) testing.
 - **5-Phase Skill Creation Pipeline**:
   1. **Phase 1: Goal & Boundary Definition** — Scope precise problem, input parameters, expected outputs, and trigger conditions.
   2. **Phase 2: Procedure & Edge-Case Architecture** — Map sequential workflow, isolate failure modes, and specify fallback paths.
@@ -95,12 +94,13 @@ flowchart TD
 
 ---
 
-## 🛠️ Modular Skills Catalog (8 Active Procedures)
+## 🛠️ Modular Skills Catalog (9 Active Procedures)
 
-Gemini-Hermes features 8 modular procedures conforming to the `agentskills.io` standard:
+Gemini-Hermes features 9 modular procedures conforming to the `agentskills.io` standard:
 
 | Skill | Category | Description |
 |---|---|---|
+| `task_watcher` | Background / Verification | Monitoring and actively verifying asynchronous and long-running tasks until confirmed completion. |
 | `multi_step_researcher` | Research / Synthesis | Systematic multi-step technical web research, official docs triangulation, and dense synthesis. |
 | `auto_debugger` | Debugging / Diagnostics | Error log parsing, stack trace isolation, root cause hypothesis testing, and surgical patching. |
 | `api_tester` | API / Validation | Probing REST/HTTP endpoints, contract mapping, curl execution, and JSON schema validation. |

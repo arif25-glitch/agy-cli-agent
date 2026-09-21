@@ -5,6 +5,16 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-09-21
+
+### Added
+- **task_watcher Modular Procedure (v1.0.0)**: Builtin skill enforcing zero premature exits on long-running tasks (`npm run build`, background file transfers, compilers). Defines active process polling, log tracking, and scheduled engine wakeup alerts (`schedule`).
+- **Dual Verification Test Suite for In-Place Status Updates**: Added automated unit tests `test_positive_in_place_status_flow` and `test_negative_fallback_when_edit_fails` in `tests/test_gemini_hermes.py` validating that tool transitions update a single message in-place and fall back gracefully if message editing is rejected.
+
+### Changed
+- **Telegram Status Message Aggregation (Zero Status Spam)**: Refactored `telegram_bot.py` turn execution to mutate and edit a single status message handle in-place (`🔨 *Currently:* <action>`) across intermediate tool executions, eliminating conversational clutter and bubble spam in Telegram.
+- **Upgraded Skills Catalog**: Builtin skills catalog expanded to 9 active procedures.
+
 ## [1.4.1] - 2026-09-20
 
 ### Added

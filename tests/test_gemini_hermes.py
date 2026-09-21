@@ -27,7 +27,7 @@ from gemini_hermes.gateway.formatter import (
 class TestConfig(unittest.TestCase):
     def test_default_config(self):
         cfg = Config()
-        self.assertEqual(cfg.app_version, "1.4.1")
+        self.assertEqual(cfg.app_version, "1.4.2")
 
         self.assertGreaterEqual(cfg.forwarder_timeout, 300.0)
         self.assertGreaterEqual(cfg.inactivity_timeout, 60.0)
@@ -115,13 +115,14 @@ class TestSkillManager(unittest.TestCase):
 
     def test_builtin_skills_loading(self):
         skills = self.manager.get_all_skills()
-        self.assertEqual(len(skills), 8)
+        self.assertEqual(len(skills), 9)
         self.assertNotIn("manager_delegation", skills)
         self.assertIn("multi_step_researcher", skills)
         self.assertIn("auto_debugger", skills)
         self.assertIn("api_tester", skills)
         self.assertIn("system_monitor", skills)
         self.assertIn("task_scheduler", skills)
+        self.assertIn("task_watcher", skills)
         self.assertIn("memory_keeper", skills)
         self.assertIn("shell_execution", skills)
         self.assertIn("skill_creator", skills)
@@ -312,5 +313,86 @@ class TestFormatter(unittest.TestCase):
         self.assertIn("running tests", err)
 
 
+class TestZeroStatusSpam(unittest.IsolatedAsyncioTestCase):
+    """
+    Dual verification test suite for Zero Status Spam (In-Place Status Editing).
+    Validates both Positive (single message edited across tool transitions)
+    and Negative (graceful fallback to send_message when editMessageText fails).
+    """
+
+    async def test_positive_in_place_status_flow(self):
+        from unittest.mock import AsyncMock, patch, MagicMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        bot.send_message = AsyncMock(return_value=101)
+        bot.edit_message_text = AsyncMock(return_value=True)
+
+        events = [
+            ToolExecutionUpdate(tool_name="view_file", action="reading config.json file"),
+            ToolExecutionUpdate(tool_name="run_command", action='running "npm run build"'),
+            ForwarderResult(
+                conversation_id="conv-123",
+                status="SUCCESS",
+                response="Build completed successfully!",
+            ),
+        ]
+
+        async def fake_stream(*args, **kwargs):
+            for ev in events:
+                yield ev
+
+        bot.forwarder.forward_stream = fake_stream
+        bot.send_chat_action = AsyncMock()
+
+        await bot.handle_chat_message(chat_id=888, user_id=999, user_text="build project")
+
+        # In positive path:
+        # 1 initial placeholder send_message
+        self.assertEqual(bot.send_message.call_count, 1)
+        # Multiple tool transitions and final result must all edit message 101 in-place
+        self.assertGreaterEqual(bot.edit_message_text.call_count, 2)
+        for call_args in bot.edit_message_text.call_args_list:
+            # First two positional args: chat_id=888, message_id=101
+            self.assertEqual(call_args[0][0], 888)
+            self.assertEqual(call_args[0][1], 101)
+
+    async def test_negative_fallback_when_edit_fails(self):
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        bot = TelegramBot(token="12345:fake_token_for_test")
+        # Placeholder created successfully
+        bot.send_message = AsyncMock(side_effect=[202, 203])
+        # editMessageText fails (e.g. user deleted message or API rejected)
+        bot.edit_message_text = AsyncMock(return_value=False)
+
+        events = [
+            ToolExecutionUpdate(tool_name="run_command", action="executing test"),
+            ForwarderResult(
+                conversation_id="conv-123",
+                status="SUCCESS",
+                response="Final output with edit failure fallback.",
+            ),
+        ]
+
+        async def fake_stream(*args, **kwargs):
+            for ev in events:
+                yield ev
+
+        bot.forwarder.forward_stream = fake_stream
+        bot.send_chat_action = AsyncMock()
+
+        await bot.handle_chat_message(chat_id=888, user_id=999, user_text="trigger failure fallback")
+
+        # Negative path resilience:
+        # When edit_message_text returns False, bot must fall back to send_message
+        # ensuring the user is never left without the final answer
+        self.assertEqual(bot.send_message.call_count, 2)
+        sent_final_text = bot.send_message.call_args_list[-1][0][1]
+        self.assertIn("Final output with edit failure fallback.", sent_final_text)
+
+
 if __name__ == "__main__":
     unittest.main()
+

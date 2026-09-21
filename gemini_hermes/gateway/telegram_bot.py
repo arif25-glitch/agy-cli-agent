@@ -552,6 +552,10 @@ class TelegramBot:
                 except Exception:
                     break
 
+        # Single live status/response message handle for in-place editing (mutable container for heartbeat access)
+        status_message_ref = [None]  # type: List[Optional[int]]
+        has_tool_run = False
+
         async def _tool_heartbeat():
             while not stop_typing.is_set():
                 try:
@@ -562,8 +566,13 @@ class TelegramBot:
                         elapsed = int(time.time() - current_tool_start[0])
                         action = current_tool_name[0]
                         if elapsed >= 15:
-                            pulse_text = f"⏳ Still executing: {action} ({elapsed}s elapsed)..."
-                            await self.send_message(chat_id, pulse_text, parse_mode=None)
+                            pulse_msg = f"⏳ Still executing: `{action}` ({elapsed}s elapsed)..."
+                            if status_message_ref[0]:
+                                await self.edit_message_text(chat_id, status_message_ref[0], pulse_msg, parse_mode="Markdown")
+                            else:
+                                sent_id = await self.send_message(chat_id, pulse_msg, parse_mode="Markdown")
+                                if sent_id:
+                                    status_message_ref[0] = sent_id
                 except asyncio.CancelledError:
                     break
                 except Exception as e:
@@ -572,15 +581,13 @@ class TelegramBot:
         typing_task = asyncio.create_task(_typing_heartbeat())
         tool_heartbeat_task = asyncio.create_task(_tool_heartbeat())
 
-        placeholder_id: Optional[int] = None
         if config.stream_updates:
-            placeholder_id = await self.send_message(chat_id, "💭 *Gemini-Hermes is thinking...*")
+            status_message_ref[0] = await self.send_message(chat_id, "💭 *Gemini-Hermes is thinking...*")
 
         accumulated_text = ""
         last_edit_time = time.time()
         last_status_time = 0.0
         last_status_action = ""
-        status_messages_sent = 0
         last_active_action = ""
         final_result: Optional[ForwarderResult] = None
 
@@ -593,7 +600,7 @@ class TelegramBot:
                     accumulated_text += event.text
                     now = time.time()
                     if (
-                        placeholder_id
+                        status_message_ref[0]
                         and config.stream_updates
                         and (now - last_edit_time >= config.stream_edit_interval)
                         and len(accumulated_text.strip()) > 0
@@ -602,11 +609,12 @@ class TelegramBot:
                         formatted_preview = format_hermes_output(accumulated_text)
                         preview = sanitize_streaming_markdown(formatted_preview) + " ▌"
                         if len(preview) <= 4000:
-                            await self.edit_message_text(chat_id, placeholder_id, preview)
+                            await self.edit_message_text(chat_id, status_message_ref[0], preview)
 
                 elif isinstance(event, ToolExecutionUpdate):
                     is_typing_active.clear()
                     tool_active_event.set()
+                    has_tool_run = True
                     current_tool_name[0] = event.action
                     current_tool_start[0] = time.time()
                     last_active_action = event.action
@@ -618,19 +626,14 @@ class TelegramBot:
                     if event.action != last_status_action and (now - last_status_time >= interval):
                         last_status_time = now
                         last_status_action = event.action
-                        status_messages_sent += 1
 
-                        # On first tool action, remove the initial thinking placeholder
-                        if placeholder_id:
-                            try:
-                                await self.delete_message(chat_id, placeholder_id)
-                            except Exception:
-                                pass
-                            placeholder_id = None
-
-                        # Push status update message directly to Telegram
-                        status_msg = f"🔨 Currently, {event.action}..."
-                        await self.send_message(chat_id, status_msg, parse_mode=None)
+                        status_msg = f"🔨 *Currently:* `{event.action}`"
+                        if status_message_ref[0]:
+                            await self.edit_message_text(chat_id, status_message_ref[0], status_msg, parse_mode="Markdown")
+                        else:
+                            sent_id = await self.send_message(chat_id, status_msg, parse_mode="Markdown")
+                            if sent_id:
+                                status_message_ref[0] = sent_id
 
                 elif isinstance(event, ForwarderResult):
                     is_typing_active.clear()
@@ -669,29 +672,31 @@ class TelegramBot:
             formatted_text = format_hermes_output(final_text)
             chunks = split_message(formatted_text)
 
-            if placeholder_id:
-                # No status messages sent; edit placeholder directly
-                await self.edit_message_text(chat_id, placeholder_id, chunks[0])
+            if status_message_ref[0]:
+                # Clean in-place transition: replace status message with the final response
+                edited_ok = await self.edit_message_text(chat_id, status_message_ref[0], chunks[0])
+                if not edited_ok:
+                    # If edit failed (e.g. deleted by user or parse error), fallback to send_message
+                    await self.send_message(chat_id, chunks[0])
                 for chunk in chunks[1:]:
                     await self.send_message(chat_id, chunk)
             else:
-                # Status messages were sent; send final response at bottom of conversation
                 for chunk in chunks:
                     await self.send_message(chat_id, chunk)
 
         except asyncio.CancelledError:
             logger.info(f"Task for chat_id={chat_id} was cancelled by user.")
             cancel_msg = "🛑 *Operation Cancelled.*\nThe ongoing request was stopped."
-            if placeholder_id:
-                await self.edit_message_text(chat_id, placeholder_id, cancel_msg)
+            if status_message_ref[0]:
+                await self.edit_message_text(chat_id, status_message_ref[0], cancel_msg)
             else:
                 await self.send_message(chat_id, cancel_msg)
             raise
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
             err_text = humanize_error(str(e), last_action=last_active_action)
-            if placeholder_id:
-                await self.edit_message_text(chat_id, placeholder_id, err_text)
+            if status_message_ref[0]:
+                await self.edit_message_text(chat_id, status_message_ref[0], err_text)
             else:
                 await self.send_message(chat_id, err_text)
         finally:
