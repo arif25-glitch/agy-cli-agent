@@ -79,15 +79,24 @@ flowchart TD
 - **Idle Direct Execution**: When idle, `/steer <instruction>` immediately executes the directive as a top-priority command.
 - **Commands**: `/steer <instruction>`.
 
-### 5. Asynchronous Task Monitoring (`task_watcher`)
+### 5. Automatic Chat Queueing ("Zero Message Drop")
+- **Multi-Message Conversational Flow**: Send multiple follow-up chats, clarifications, or thoughts naturally on Telegram while the agent is actively executing—no slash commands required.
+- **Auto-Enqueue Engine**: Incoming plain text messages and media attachments (photos, documents) sent mid-flight are automatically placed into the sequential FIFO execution queue with instant position confirmation (`#1 in queue`, `#2 in queue`).
+- **Capacity Protection**: Built-in capacity guard (`max_queue_size = 10`) protects host memory against spam or runaway queues with polite queue-full warnings.
+- **Fault & Crash Resilience**: If an active task encounters an error or is redirected via `/steer`, the sequential queue is preserved and safely drained upon completion.
+- **Commands**:
+  - `/queue` — View active task status and all pending queued messages.
+  - `/cancel` — Instantly abort active execution and flush the task queue.
+
+### 6. Asynchronous Task Monitoring (`task_watcher`)
 - **Zero Premature Exits**: Strictly prevents abandoning running builds or operations with premature "running in background" responses.
 - **Active Verification**: Follows background tasks through completion via process monitoring and artifact validation.
 
-### 6. Zero Status Spam (In-Place Message Editing)
+### 7. Zero Status Spam (In-Place Message Editing)
 - **Fluid Telegram UI**: Intermediate tool steps dynamically mutate the current message bubble rather than creating duplicate bubbles in Telegram.
 - **Resilient Fallback**: Gracefully falls back to new messages if Telegram API edit limits or deletions occur.
 
-### 7. Tiered Quality Memory & Context Hygiene (`/compact`)
+### 8. Tiered Quality Memory & Context Hygiene (`/compact`)
 - **Hot Working Context (In-Prompt)**: Dynamic hot memory keeps prompt tokens lean (~2k tokens) by capping resolved milestones to the 4–5 most recent items while retaining 100% of active tasks `[ ]`.
 - **Warm Permanent Archive (On-Disk)**: Older completed tasks and multiline verification logs are moved to `data/memory/archive/BACKLOG_ARCHIVE.md`, preserving deep historical records off-prompt for on-demand tool inspection.
 - **Dynamic Archival Indicators**: If older tasks are archived, prompt context displays a clean pointer (e.g. `- *(+N older completed tasks archived in data/memory/archive/BACKLOG_ARCHIVE.md)*`).
@@ -96,7 +105,7 @@ flowchart TD
   - `/memory` — Inspect all modular memory files and current token footprint.
   - `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
-### 8. Deliberate Cadence & Rigorous Dual Verification
+### 9. Deliberate Cadence & Rigorous Dual Verification
 
 - **Slow is Smooth, Smooth is Fast**: Rejects rushed, unverified code changes that create debugging debt.
 - **Dual Verification**: Every feature or procedure must pass both positive (happy path) and negative (error boundary and fallback) testing.
