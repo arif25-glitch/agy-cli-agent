@@ -1198,6 +1198,226 @@ class TestAutoChatQueue(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.bot._task_queues[chat_id], ["pending item A", "pending item B"])
 
 
+class TestChatReply(unittest.IsolatedAsyncioTestCase):
+    """
+    Dual Verification Test Suite for Targeted Telegram Message Quoting & Context Awareness:
+    - Positive Path 1: Direct single chat message passes reply_to_message_id and reply_parameters to sendMessage API.
+    - Positive Path 2: Queued tasks retain originating message_id and execute _run_queued_task quoting originating user messages.
+    - Positive Path 3: Inbound Telegram reply quote (reply_to_message) extracts sender and quoted text into prompt context.
+    - Positive Path 4: Inbound Telegram reply to media (photo, document) injects media description into prompt.
+    - Negative Path 1: Deleted target message resilience - allow_sending_without_reply=True is set on all payloads (including fallback).
+    - Negative Path 2: Graceful fallback when queue items are plain strings (legacy/test backward compatibility).
+    """
+
+    def setUp(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        self.bot = TelegramBot(token="12345:fake_token_for_test")
+        self.bot.is_user_allowed = MagicMock(return_value=True)
+        self.bot._api_call = AsyncMock(return_value={"ok": True, "result": {"message_id": 9999}})
+        self.bot.send_chat_action = AsyncMock(return_value=True)
+        self.bot.edit_message_text = AsyncMock(return_value=True)
+
+    async def test_positive_direct_message_reply_payload(self):
+        """Positive Path 1: Direct message reply passes reply_to_message_id and reply_parameters to Telegram sendMessage."""
+        chat_id = 2001
+        msg_id = 777
+
+        # Call send_message directly with reply_to_message_id
+        res = await self.bot.send_message(chat_id, "Direct reply test", reply_to_message_id=msg_id)
+        self.assertEqual(res, 9999)
+
+        call_args = self.bot._api_call.call_args[0]
+        method = call_args[0]
+        payload = call_args[1]
+
+        self.assertEqual(method, "sendMessage")
+        self.assertEqual(payload["chat_id"], chat_id)
+        self.assertEqual(payload["text"], "Direct reply test")
+        self.assertEqual(payload["reply_to_message_id"], msg_id)
+        self.assertTrue(payload["allow_sending_without_reply"])
+        self.assertEqual(
+            payload["reply_parameters"],
+            {"message_id": msg_id, "allow_sending_without_reply": True},
+        )
+
+    async def test_positive_queued_tasks_retain_message_id_and_reply(self):
+        """Positive Path 2: Queued tasks retain originating message_id and _run_queued_task passes reply_to_message_id."""
+        from unittest.mock import MagicMock, AsyncMock
+
+        chat_id = 2002
+        user_id = 888
+
+        # Simulate active task running
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+
+        # Send consecutive messages
+        updates = [
+            {"update_id": 1, "message": {"message_id": 101, "chat": {"id": chat_id}, "from": {"id": user_id}, "text": "is"}},
+            {"update_id": 2, "message": {"message_id": 102, "chat": {"id": chat_id}, "from": {"id": user_id}, "text": "just"}},
+        ]
+
+        for u in updates:
+            await self.bot.process_update(u)
+
+        # Verify queue contains QueuedTask with matching message_id
+        self.assertEqual(len(self.bot._task_queues[chat_id]), 2)
+        q1 = self.bot._task_queues[chat_id][0]
+        q2 = self.bot._task_queues[chat_id][1]
+        self.assertEqual(q1, "is")
+        self.assertEqual(q1.message_id, 101)
+        self.assertEqual(q2, "just")
+        self.assertEqual(q2.message_id, 102)
+
+        # Test _run_queued_task dispatching for q1
+        self.bot.send_message = AsyncMock(return_value=5555)
+        self.bot.handle_chat_message = AsyncMock()
+
+        await self.bot._run_queued_task(chat_id, user_id, q1)
+
+        # Notice message replies to 101
+        self.bot.send_message.assert_called_once()
+        self.assertEqual(self.bot.send_message.call_args[1].get("reply_to_message_id"), 101)
+
+        # handle_chat_message received reply_to_message_id=101
+        self.bot.handle_chat_message.assert_called_once_with(
+            chat_id, user_id, q1, reply_to_message_id=101
+        )
+
+    async def test_positive_inbound_reply_to_message_context_injection(self):
+        """Positive Path 3: Replying/quoting a Telegram message injects sender and quoted text into prompt."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2003
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        update = {
+            "update_id": 5,
+            "message": {
+                "message_id": 301,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "Can you explain this part?",
+                "reply_to_message": {
+                    "message_id": 200,
+                    "from": {"id": 12345, "first_name": "Gemini-Hermes"},
+                    "text": "def compute_hash(): return sha256(data)",
+                },
+            },
+        }
+
+        await self.bot.process_update(update)
+
+        self.bot.handle_chat_message.assert_called_once()
+        prompt_arg = self.bot.handle_chat_message.call_args[0][2]
+        reply_id_arg = self.bot.handle_chat_message.call_args[1].get("reply_to_message_id")
+
+        self.assertEqual(reply_id_arg, 301)
+        self.assertIn('[Replying to message from Gemini-Hermes: "def compute_hash(): return sha256(data)"]', prompt_arg)
+        self.assertIn("Can you explain this part?", prompt_arg)
+
+    async def test_positive_inbound_reply_to_media_context(self):
+        """Positive Path 4: Replying to photo or document without text injects media description into prompt."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2004
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        # Reply to photo
+        update_photo = {
+            "update_id": 6,
+            "message": {
+                "message_id": 302,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "What does this show?",
+                "reply_to_message": {
+                    "message_id": 201,
+                    "from": {"id": 888, "first_name": "Arif"},
+                    "photo": [{"file_id": "photo_xyz"}],
+                },
+            },
+        }
+        await self.bot.process_update(update_photo)
+        prompt_photo = self.bot.handle_chat_message.call_args[0][2]
+        self.assertIn("[Replying to photo from Arif]", prompt_photo)
+
+        # Reply to document
+        self.bot.handle_chat_message.reset_mock()
+        update_doc = {
+            "update_id": 7,
+            "message": {
+                "message_id": 303,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "Summarize this PDF",
+                "reply_to_message": {
+                    "message_id": 202,
+                    "from": {"id": 888, "first_name": "Arif"},
+                    "document": {"file_id": "doc_xyz", "file_name": "proposal.pdf"},
+                },
+            },
+        }
+        await self.bot.process_update(update_doc)
+        prompt_doc = self.bot.handle_chat_message.call_args[0][2]
+        self.assertIn("[Replying to file (proposal.pdf) from Arif]", prompt_doc)
+
+    async def test_negative_deleted_message_resilience_and_markdown_fallback(self):
+        """Negative Path 1: Deleted message resilience and fallback payload retains reply_to_message_id and allow_sending_without_reply."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2005
+        msg_id = 999
+
+        # Simulate first call failing (e.g. markdown parse error) and fallback succeeding
+        self.bot._api_call = AsyncMock(side_effect=[
+            {"ok": False, "description": "Bad Request: can't parse entities"},
+            {"ok": True, "result": {"message_id": 8888}},
+        ])
+
+        res = await self.bot.send_message(chat_id, "Unclosed *markdown", reply_to_message_id=msg_id)
+        self.assertEqual(res, 8888)
+        self.assertEqual(self.bot._api_call.call_count, 2)
+
+        # Check fallback call payload
+        fallback_call_args = self.bot._api_call.call_args_list[1][0]
+        fallback_payload = fallback_call_args[1]
+
+        self.assertEqual(fallback_payload["reply_to_message_id"], msg_id)
+        self.assertTrue(fallback_payload["allow_sending_without_reply"])
+        self.assertEqual(
+            fallback_payload["reply_parameters"],
+            {"message_id": msg_id, "allow_sending_without_reply": True},
+        )
+
+    async def test_negative_plain_string_queue_items_fallback_cleanly(self):
+        """Negative Path 2: Plain string queue items (without message_id attribute) execute gracefully with None."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2006
+        user_id = 888
+
+        self.bot.send_message = AsyncMock(return_value=7777)
+        self.bot.handle_chat_message = AsyncMock()
+
+        # Pass a regular python string without message_id
+        regular_string = "task from plain string"
+        await self.bot._run_queued_task(chat_id, user_id, regular_string)
+
+        self.bot.send_message.assert_called_once()
+        self.assertIsNone(self.bot.send_message.call_args[1].get("reply_to_message_id"))
+        self.bot.handle_chat_message.assert_called_once_with(
+            chat_id, user_id, regular_string, reply_to_message_id=None
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
 

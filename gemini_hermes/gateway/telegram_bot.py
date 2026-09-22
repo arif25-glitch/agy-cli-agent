@@ -22,6 +22,23 @@ from gemini_hermes.gateway.formatter import (
 logger = logging.getLogger("gemini-hermes.telegram")
 
 
+class QueuedTask(str):
+    """
+    A string subclass that transparently carries metadata (such as originating
+    Telegram message_id and item_type) through task queues.
+    Inheriting from str ensures complete backwards-compatibility with string
+    comparisons, logging, formatting, and existing tests.
+    """
+    message_id: Optional[int]
+    item_type: str
+
+    def __new__(cls, content: str, message_id: Optional[int] = None, item_type: str = "message"):
+        obj = super().__new__(cls, content)
+        obj.message_id = message_id
+        obj.item_type = item_type
+        return obj
+
+
 class TelegramBot:
     def __init__(
         self,
@@ -93,18 +110,34 @@ class TelegramBot:
         return False
 
     async def send_message(
-        self, chat_id: int, text: str, parse_mode: Optional[str] = "Markdown"
+        self,
+        chat_id: int,
+        text: str,
+        parse_mode: Optional[str] = "Markdown",
+        reply_to_message_id: Optional[int] = None,
     ) -> Optional[int]:
         payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
         if parse_mode:
             payload["parse_mode"] = parse_mode
+        if reply_to_message_id:
+            payload["reply_to_message_id"] = reply_to_message_id
+            payload["allow_sending_without_reply"] = True
+            payload["reply_parameters"] = {
+                "message_id": reply_to_message_id,
+                "allow_sending_without_reply": True,
+            }
         res = await self._api_call("sendMessage", payload)
         if not res.get("ok") and parse_mode:
             # Fallback without markdown parsing if syntax error occurs
-            res = await self._api_call(
-                "sendMessage",
-                {"chat_id": chat_id, "text": text},
-            )
+            fallback_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+            if reply_to_message_id:
+                fallback_payload["reply_to_message_id"] = reply_to_message_id
+                fallback_payload["allow_sending_without_reply"] = True
+                fallback_payload["reply_parameters"] = {
+                    "message_id": reply_to_message_id,
+                    "allow_sending_without_reply": True,
+                }
+            res = await self._api_call("sendMessage", fallback_payload)
         if res.get("ok"):
             return res["result"]["message_id"]
         return None
@@ -491,6 +524,7 @@ class TelegramBot:
         query: str,
         task_preview: Optional[str] = None,
         last_action: Optional[str] = None,
+        reply_to_message_id: Optional[int] = None,
     ):
         """
         Executes an ephemeral, side-channel question in parallel without interrupting
@@ -498,7 +532,7 @@ class TelegramBot:
         """
         try:
             placeholder_text = f"💬 *Side Question (/btw):*\n_{query}_\n\n⏳ _Consulting proxy engine..._"
-            msg_id = await self.send_message(chat_id, placeholder_text)
+            msg_id = await self.send_message(chat_id, placeholder_text, reply_to_message_id=reply_to_message_id)
 
             task_clause = ""
             if task_preview:
@@ -551,7 +585,7 @@ class TelegramBot:
             )
             await self.send_message(chat_id, fallback)
 
-    async def handle_btw(self, chat_id: int, user_id: int, text: str):
+    async def handle_btw(self, chat_id: int, user_id: int, text: str, message_id: Optional[int] = None):
         query = text.strip()
         if not query:
             await self.send_message(
@@ -561,6 +595,7 @@ class TelegramBot:
                 "• *Live status check:* `/btw what are you doing now?`\n"
                 "• *Queue next task:* `/btw after this, write tests` or `/btw task: deploy app`\n\n"
                 "_Side questions run in parallel without interrupting or polluting active tasks._",
+                reply_to_message_id=message_id,
             )
             return
 
@@ -572,18 +607,25 @@ class TelegramBot:
                 await self.send_message(
                     chat_id,
                     "ℹ️ *Status:* No background task is currently running. I am idle and ready for requests!",
+                    reply_to_message_id=message_id,
                 )
                 return
             elif intent == "question":
                 # Execute as an ephemeral side question
                 asyncio.create_task(
-                    self._handle_btw_ephemeral_question(chat_id, clean_query)
+                    self._handle_btw_ephemeral_question(chat_id, clean_query, reply_to_message_id=message_id)
                 )
                 return
             else:
                 # Task intent: execute directly as a chat message
-                await self.send_message(chat_id, f"💡 *Executing `/btw` task directly:* `{clean_query}`")
-                task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, clean_query))
+                await self.send_message(
+                    chat_id,
+                    f"💡 *Executing `/btw` task directly:* `{clean_query}`",
+                    reply_to_message_id=message_id,
+                )
+                task = asyncio.create_task(
+                    self.handle_chat_message(chat_id, user_id, clean_query, reply_to_message_id=message_id)
+                )
                 self._active_tasks[chat_id] = task
                 return
 
@@ -606,7 +648,7 @@ class TelegramBot:
                 f"• *Status:* ⚙️ Actively executing in background\n\n"
                 f"_The primary task continues uninterrupted._"
             )
-            await self.send_message(chat_id, status_text)
+            await self.send_message(chat_id, status_text, reply_to_message_id=message_id)
             return
 
         elif intent == "question":
@@ -617,6 +659,7 @@ class TelegramBot:
                     clean_query,
                     task_preview=task_preview,
                     last_action=last_action,
+                    reply_to_message_id=message_id,
                 )
             )
             return
@@ -631,9 +674,11 @@ class TelegramBot:
                     chat_id,
                     f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
                     "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
+                    reply_to_message_id=message_id,
                 )
                 return
-            self._task_queues[chat_id].append(clean_query)
+            queued_item = QueuedTask(clean_query, message_id=message_id, item_type="btw_task")
+            self._task_queues[chat_id].append(queued_item)
             q_pos = len(self._task_queues[chat_id])
 
             reply_text = (
@@ -643,9 +688,9 @@ class TelegramBot:
                 f"• *Queue Position:* `#{q_pos}`\n"
                 f"• *Execution:* Will automatically run as soon as the active operation completes!"
             )
-            await self.send_message(chat_id, reply_text)
+            await self.send_message(chat_id, reply_text, reply_to_message_id=message_id)
 
-    async def handle_steer(self, chat_id: int, user_id: int, text: str):
+    async def handle_steer(self, chat_id: int, user_id: int, text: str, message_id: Optional[int] = None):
         directive = text.strip()
         if not directive:
             await self.send_message(
@@ -658,6 +703,7 @@ class TelegramBot:
                 "• `/steer Stop creating Postgres tables, use SQLite with Prisma instead`\n"
                 "• `/steer Switch focus to writing unit tests first`\n"
                 "• `/steer Keep current backend code, but change UI to dark mode`",
+                reply_to_message_id=message_id,
             )
             return
 
@@ -698,10 +744,11 @@ class TelegramBot:
                 f"• *Previous Action:* `{last_action}` (redirected)\n"
                 f"• *New Direction:* `{directive}`\n\n"
                 f"_Pivoting immediately into the updated direction..._",
+                reply_to_message_id=message_id,
             )
 
             new_task = asyncio.create_task(
-                self.handle_chat_message(chat_id, user_id, steer_prompt)
+                self.handle_chat_message(chat_id, user_id, steer_prompt, reply_to_message_id=message_id)
             )
             self._active_tasks[chat_id] = new_task
             return
@@ -718,10 +765,11 @@ class TelegramBot:
             await self.send_message(
                 chat_id,
                 f"🧭 *Steering Directive Applied:*\n`{directive}`\n\n_Executing with updated steering focus..._",
+                reply_to_message_id=message_id,
             )
 
             task = asyncio.create_task(
-                self.handle_chat_message(chat_id, user_id, steer_prompt)
+                self.handle_chat_message(chat_id, user_id, steer_prompt, reply_to_message_id=message_id)
             )
             self._active_tasks[chat_id] = task
             return
@@ -732,6 +780,7 @@ class TelegramBot:
         item: str,
         item_type: str = "message",
         preview_override: Optional[str] = None,
+        message_id: Optional[int] = None,
     ) -> bool:
         """
         Enqueues an item (chat message, image prompt, doc prompt) into the sequential task queue.
@@ -746,10 +795,15 @@ class TelegramBot:
                 chat_id,
                 f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
                 "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
+                reply_to_message_id=message_id,
             )
             return False
 
-        self._task_queues[chat_id].append(item)
+        queued_item = (
+            item if isinstance(item, QueuedTask)
+            else QueuedTask(item, message_id=message_id, item_type=item_type)
+        )
+        self._task_queues[chat_id].append(queued_item)
         q_pos = len(self._task_queues[chat_id])
 
         if preview_override:
@@ -769,6 +823,7 @@ class TelegramBot:
             f"• *Status:* Active operation still executing\n"
             f"• *Next:* Will run automatically once current task completes.\n"
             f"• _Quick actions: `/steer <msg>` to redirect now | `/queue` | `/cancel`_",
+            reply_to_message_id=message_id,
         )
         return True
 
@@ -794,9 +849,18 @@ class TelegramBot:
 
         await self.send_message(chat_id, "\n".join(lines))
 
-    async def _run_queued_task(self, chat_id: int, user_id: int, text: str):
+    async def _run_queued_task(
+        self,
+        chat_id: int,
+        user_id: int,
+        text: str,
+        reply_to_message_id: Optional[int] = None,
+    ):
         try:
             await asyncio.sleep(0.5)
+            if reply_to_message_id is None:
+                reply_to_message_id = getattr(text, "message_id", None)
+
             if text.startswith("[Attached User Image:"):
                 notice = "⚡ *Processing queued image analysis...*"
             elif text.startswith("[Attached User File:"):
@@ -804,13 +868,21 @@ class TelegramBot:
             else:
                 preview = text if len(text) <= 80 else text[:77] + "..."
                 notice = f"⚡ *Processing queued task:*\n`{preview}`"
-            await self.send_message(chat_id, notice)
-            task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, text))
+            await self.send_message(chat_id, notice, reply_to_message_id=reply_to_message_id)
+            task = asyncio.create_task(
+                self.handle_chat_message(chat_id, user_id, text, reply_to_message_id=reply_to_message_id)
+            )
             self._active_tasks[chat_id] = task
         except Exception as e:
             logger.error(f"Error starting queued task for chat_id={chat_id}: {e}", exc_info=True)
 
-    async def handle_chat_message(self, chat_id: int, user_id: int, user_text: str):
+    async def handle_chat_message(
+        self,
+        chat_id: int,
+        user_id: int,
+        user_text: str,
+        reply_to_message_id: Optional[int] = None,
+    ):
         curr_task = asyncio.current_task()
         if curr_task:
             self._active_tasks[chat_id] = curr_task
@@ -890,7 +962,11 @@ class TelegramBot:
         tool_heartbeat_task = asyncio.create_task(_tool_heartbeat())
 
         if config.stream_updates:
-            status_message_ref[0] = await self.send_message(chat_id, "💭 *Gemini-Hermes is thinking...*")
+            status_message_ref[0] = await self.send_message(
+                chat_id,
+                "💭 *Gemini-Hermes is thinking...*",
+                reply_to_message_id=reply_to_message_id,
+            )
 
         accumulated_text = ""
         last_edit_time = time.time()
@@ -985,12 +1061,14 @@ class TelegramBot:
                 edited_ok = await self.edit_message_text(chat_id, status_message_ref[0], chunks[0])
                 if not edited_ok:
                     # If edit failed (e.g. deleted by user or parse error), fallback to send_message
-                    await self.send_message(chat_id, chunks[0])
+                    await self.send_message(chat_id, chunks[0], reply_to_message_id=reply_to_message_id)
                 for chunk in chunks[1:]:
                     await self.send_message(chat_id, chunk)
             else:
-                for chunk in chunks:
-                    await self.send_message(chat_id, chunk)
+                if chunks:
+                    await self.send_message(chat_id, chunks[0], reply_to_message_id=reply_to_message_id)
+                    for chunk in chunks[1:]:
+                        await self.send_message(chat_id, chunk)
 
         except asyncio.CancelledError:
             logger.info(f"Task for chat_id={chat_id} was cancelled.")
@@ -1005,7 +1083,7 @@ class TelegramBot:
                 if status_message_ref[0]:
                     await self.edit_message_text(chat_id, status_message_ref[0], cancel_msg)
                 else:
-                    await self.send_message(chat_id, cancel_msg)
+                    await self.send_message(chat_id, cancel_msg, reply_to_message_id=reply_to_message_id)
             raise
         except Exception as e:
             logger.error(f"Error handling message: {e}", exc_info=True)
@@ -1013,7 +1091,7 @@ class TelegramBot:
             if status_message_ref[0]:
                 await self.edit_message_text(chat_id, status_message_ref[0], err_text)
             else:
-                await self.send_message(chat_id, err_text)
+                await self.send_message(chat_id, err_text, reply_to_message_id=reply_to_message_id)
         finally:
             stop_typing.set()
             if not typing_task.done():
@@ -1032,8 +1110,16 @@ class TelegramBot:
             # Check if there is a queued /btw task (only if not steered)
             if not was_steered and chat_id in self._task_queues and self._task_queues[chat_id]:
                 next_task_text = self._task_queues[chat_id].pop(0)
-                logger.info(f"Triggering next queued task for chat_id={chat_id}: {next_task_text[:50]}")
-                asyncio.create_task(self._run_queued_task(chat_id, user_id, next_task_text))
+                next_reply_id = getattr(next_task_text, "message_id", None)
+                logger.info(
+                    f"Triggering next queued task for chat_id={chat_id}: {next_task_text[:50]} (reply_to={next_reply_id})"
+                )
+                if next_reply_id is not None:
+                    asyncio.create_task(
+                        self._run_queued_task(chat_id, user_id, next_task_text, reply_to_message_id=next_reply_id)
+                    )
+                else:
+                    asyncio.create_task(self._run_queued_task(chat_id, user_id, next_task_text))
 
     async def process_update(self, update: Dict[str, Any]):
         msg = update.get("message") or update.get("edited_message")
@@ -1044,10 +1130,12 @@ class TelegramBot:
         chat_id = chat.get("id")
         from_user = msg.get("from", {})
         user_id = from_user.get("id")
+        message_id = msg.get("message_id")
         text = msg.get("text", "")
         photo = msg.get("photo")
         doc = msg.get("document")
         caption = msg.get("caption", "").strip()
+        reply_to = msg.get("reply_to_message")
 
         if not chat_id or not user_id:
             return
@@ -1060,6 +1148,23 @@ class TelegramBot:
 
         # Check if an active task is running in background for this chat
         is_task_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
+
+        # Contextual quoting from inbound Telegram replies
+        reply_context = ""
+        if reply_to:
+            r_from = reply_to.get("from", {})
+            r_sender = r_from.get("first_name") or r_from.get("username") or "User"
+            r_text = reply_to.get("text") or reply_to.get("caption") or ""
+            if r_text:
+                r_preview = r_text.strip()
+                if len(r_preview) > 300:
+                    r_preview = r_preview[:297] + "..."
+                reply_context = f'[Replying to message from {r_sender}: "{r_preview}"]\n\n'
+            elif reply_to.get("photo"):
+                reply_context = f"[Replying to photo from {r_sender}]\n\n"
+            elif reply_to.get("document"):
+                doc_name = reply_to.get("document", {}).get("file_name", "file")
+                reply_context = f"[Replying to file ({doc_name}) from {r_sender}]\n\n"
 
         # Handle photos / images
         if photo:
@@ -1075,6 +1180,7 @@ class TelegramBot:
                 downloaded = await self.download_file_to(tg_file_path, local_path)
                 if downloaded:
                     user_prompt = (
+                        f"{reply_context}"
                         f"[Attached User Image: {local_path}]\n"
                         f"Caption / Question: {caption or 'Please inspect and analyze this image in detail.'}\n\n"
                         f"System Instruction: The user has attached an image in Telegram, saved on disk at '{local_path}'. "
@@ -1087,16 +1193,27 @@ class TelegramBot:
                             item=user_prompt,
                             item_type="image",
                             preview_override=f"Attached Image: {caption}" if caption else "Attached Image Analysis",
+                            message_id=message_id,
                         )
                         return
                     else:
-                        await self.handle_chat_message(chat_id, user_id, user_prompt)
+                        await self.handle_chat_message(
+                            chat_id, user_id, user_prompt, reply_to_message_id=message_id
+                        )
                         return
                 else:
-                    await self.send_message(chat_id, "⚠️ Failed to download the attached image. Please try again.")
+                    await self.send_message(
+                        chat_id,
+                        "⚠️ Failed to download the attached image. Please try again.",
+                        reply_to_message_id=message_id,
+                    )
                     return
             else:
-                await self.send_message(chat_id, "⚠️ Could not retrieve image metadata from Telegram.")
+                await self.send_message(
+                    chat_id,
+                    "⚠️ Could not retrieve image metadata from Telegram.",
+                    reply_to_message_id=message_id,
+                )
                 return
 
         # Handle documents (e.g. image files or documents sent uncompressed)
@@ -1117,6 +1234,7 @@ class TelegramBot:
                         else f"Use your file inspection tools to examine and analyze this file."
                     )
                     user_prompt = (
+                        f"{reply_context}"
                         f"[Attached User File: {local_path}]\n"
                         f"File Name: {file_name} (MIME: {doc_mime})\n"
                         f"Caption / Question: {caption or f'Please inspect the attached file {file_name}.'}\n\n"
@@ -1129,13 +1247,20 @@ class TelegramBot:
                             item=user_prompt,
                             item_type="document",
                             preview_override=f"File ({file_name}): {caption}" if caption else f"Attached File: {file_name}",
+                            message_id=message_id,
                         )
                         return
                     else:
-                        await self.handle_chat_message(chat_id, user_id, user_prompt)
+                        await self.handle_chat_message(
+                            chat_id, user_id, user_prompt, reply_to_message_id=message_id
+                        )
                         return
                 else:
-                    await self.send_message(chat_id, "⚠️ Failed to download the attached file. Please try again.")
+                    await self.send_message(
+                        chat_id,
+                        "⚠️ Failed to download the attached file. Please try again.",
+                        reply_to_message_id=message_id,
+                    )
                     return
 
         if not text or not text.strip():
@@ -1166,9 +1291,9 @@ class TelegramBot:
                     "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",
                 )
             elif cmd == "/btw":
-                await self.handle_btw(chat_id, user_id, arg)
+                await self.handle_btw(chat_id, user_id, arg, message_id=message_id)
             elif cmd in ("/steer", "/steer:"):
-                await self.handle_steer(chat_id, user_id, arg)
+                await self.handle_steer(chat_id, user_id, arg, message_id=message_id)
             elif cmd == "/queue":
                 await self.handle_queue(chat_id)
             elif cmd == "/cancel":
@@ -1216,10 +1341,21 @@ class TelegramBot:
             else:
                 await self.send_message(chat_id, f"❓ Unknown command: `{cmd}`. Type `/help` for available commands.")
         else:
+            effective_text = f"{reply_context}{text}" if reply_context else text
             if is_task_running:
-                await self._enqueue_task(chat_id, text, item_type="message")
+                await self._enqueue_task(
+                    chat_id,
+                    effective_text,
+                    item_type="message",
+                    message_id=message_id,
+                )
             else:
-                await self.handle_chat_message(chat_id, user_id, text)
+                await self.handle_chat_message(
+                    chat_id,
+                    user_id,
+                    effective_text,
+                    reply_to_message_id=message_id,
+                )
 
     async def run(self):
         if not self.token:
