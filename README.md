@@ -1,14 +1,16 @@
-# 🪐 Gemini-Hermes AI Agent `v1.5.0`
+# 🪐 Gemini-Hermes AI Agent `v1.5.1`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.5.0 Highlights:**
+> **Release v1.5.1 Highlights:**
+> - **Automatic Chat Queueing ("Zero Message Drop")**: Natural multi-message conversational flow on Telegram without slash commands. All plain text messages, photos, and documents sent mid-flight are automatically enqueued into a sequential FIFO queue.
+> - **Capacity Protection Guard**: Hardened task queue with `max_queue_size = 10` capacity protection and instant `#1 in queue` position feedback.
 > - **Tiered Quality Memory Architecture**: Structured separation between fast in-prompt working context ("Hot Memory") and permanent on-disk archives ("Warm Memory" in `data/memory/archive/BACKLOG_ARCHIVE.md`), preventing attention dilution while retaining 100% of historical milestones.
 > - **Dynamic Hot Backlog Capping**: In-prompt working context automatically preserves 100% of active tasks `[ ]` while dynamically capping resolved items `[x]` to the 4–5 most recent entries with off-prompt archival pointers.
 > - **Telegram `/compact` Command**: One-touch memory compaction and pruning command reporting live telemetry (archived tasks, hot memory tokens, total disk persistence).
 > - **Mid-Flight Steering (`/steer`)**: Immediate course-correction command that cleanly halts active turns, captures progress context, and restarts execution along new parameters without race conditions.
 > - **Zero Status Spam (In-Place Status Editing)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter.
-> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, and gateway dispatch (39 passing unit/integration tests).
+> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, and gateway dispatch (48 passing unit/integration tests).
 
 ---
 
