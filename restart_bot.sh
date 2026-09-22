@@ -1,20 +1,21 @@
 #!/usr/bin/env bash
-# Wait for any active agy execution to complete and deliver its response
-while pgrep -f "/root/.local/bin/agy" > /dev/null; do
-    sleep 1
-done
-# Extra grace period for Telegram message delivery to complete
-sleep 2
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Terminate previous bot process
 old_pids=$(pgrep -f "gemini_hermes.cli start")
 if [ -n "$old_pids" ]; then
+    # Wait briefly for any child process of the bot to finish
+    for pid in $old_pids; do
+        count=0
+        while pgrep -P "$pid" > /dev/null 2>&1 && [ $count -lt 5 ]; do
+            sleep 1
+            count=$((count + 1))
+        done
+    done
     kill -9 $old_pids 2>/dev/null || true
 fi
 sleep 1
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "$SCRIPT_DIR"
 export PYTHONPATH="$SCRIPT_DIR:$PYTHONPATH"
 
 if [ -d "$SCRIPT_DIR/.venv/bin" ]; then
@@ -23,6 +24,8 @@ else
     PYTHON_BIN="python3"
 fi
 
-$PYTHON_BIN -m gemini_hermes.cli start >> "$SCRIPT_DIR/gemini-hermes.log" 2>&1 &
-echo $! > "$SCRIPT_DIR/gemini-hermes.pid"
-
+nohup $PYTHON_BIN -m gemini_hermes.cli start >> "$SCRIPT_DIR/gemini-hermes.log" 2>&1 &
+BOT_PID=$!
+disown $BOT_PID 2>/dev/null || true
+echo $BOT_PID > "$SCRIPT_DIR/gemini-hermes.pid"
+echo "Gemini-Hermes started with PID $BOT_PID"
