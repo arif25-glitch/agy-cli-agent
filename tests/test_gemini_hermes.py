@@ -886,6 +886,318 @@ class TestTieredQualityMemory(unittest.IsolatedAsyncioTestCase):
         self.assertIn("random notes without headers", hot)
 
 
+class TestAutoChatQueue(unittest.IsolatedAsyncioTestCase):
+    """
+    Dual Verification Test Suite for Automatic Chat Queueing ("Zero Message Drop").
+    Tests Positive Paths (Single chat, multiple sequential chats, image attachments) and
+    Expanded Negative Paths (Capacity overflow, whitespace rejection, task crash recovery,
+    cancel purge, reset purge, steer queue preservation).
+    """
+
+    def setUp(self):
+        from unittest.mock import AsyncMock, MagicMock
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+
+        self.bot = TelegramBot(token="12345:fake_token_for_test")
+        self.bot.is_user_allowed = MagicMock(return_value=True)
+        self.bot.send_message = AsyncMock(return_value=1001)
+        self.bot.send_chat_action = AsyncMock(return_value=True)
+        self.bot.edit_message_text = AsyncMock(return_value=True)
+        self.bot.handle_chat_message = AsyncMock()
+
+    async def test_positive_auto_queue_single_chat(self):
+        """Positive Path 1: Non-slash message sent during active task is enqueued with position #1."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1001
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot._active_task_info[chat_id] = {"text": "Primary task", "last_action": "running", "user_id": user_id}
+
+        update = {
+            "update_id": 1,
+            "message": {
+                "message_id": 10,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "how's your day",
+            },
+        }
+
+        await self.bot.process_update(update)
+
+        # Verified queued
+        self.assertIn(chat_id, self.bot._task_queues)
+        self.assertEqual(len(self.bot._task_queues[chat_id]), 1)
+        self.assertEqual(self.bot._task_queues[chat_id][0], "how's your day")
+
+        # Verified confirmation dispatched
+        self.bot.send_message.assert_called_once()
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Message Queued", sent_text)
+        self.assertIn("#1", sent_text)
+        self.assertIn("how's your day", sent_text)
+
+    async def test_positive_auto_queue_multiple_chats_sequential(self):
+        """Positive Path 2: Multiple non-slash messages are queued in FIFO order and displayed in /queue."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1002
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot._active_task_info[chat_id] = {"text": "Heavy build", "last_action": "compiling", "user_id": user_id}
+
+        for i, text in enumerate(["first follow-up", "second follow-up", "third follow-up"], 1):
+            update = {
+                "update_id": i,
+                "message": {
+                    "message_id": 20 + i,
+                    "chat": {"id": chat_id},
+                    "from": {"id": user_id},
+                    "text": text,
+                },
+            }
+            await self.bot.process_update(update)
+
+        # Verified 3 items in FIFO order
+        self.assertEqual(len(self.bot._task_queues[chat_id]), 3)
+        self.assertEqual(self.bot._task_queues[chat_id], ["first follow-up", "second follow-up", "third follow-up"])
+
+        # Check /queue output
+        self.bot.send_message.reset_mock()
+        await self.bot.handle_queue(chat_id)
+        queue_msg = self.bot.send_message.call_args[0][1]
+        self.assertIn("Task Queue Status", queue_msg)
+        self.assertIn("first follow-up", queue_msg)
+        self.assertIn("second follow-up", queue_msg)
+        self.assertIn("third follow-up", queue_msg)
+
+    async def test_positive_queue_image_attachment(self):
+        """Positive Path 3: Image attachments sent while task is running are parsed and enqueued."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        chat_id = 1003
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+
+        self.bot.get_file_path = AsyncMock(return_value="/tg/photo.jpg")
+        self.bot.download_file_to = AsyncMock(return_value=True)
+
+        update = {
+            "update_id": 5,
+            "message": {
+                "message_id": 30,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "photo": [{"file_id": "file_abc_123"}],
+                "caption": "analyze this chart",
+            },
+        }
+
+        await self.bot.process_update(update)
+
+        self.assertIn(chat_id, self.bot._task_queues)
+        self.assertEqual(len(self.bot._task_queues[chat_id]), 1)
+        queued_item = self.bot._task_queues[chat_id][0]
+        self.assertIn("[Attached User Image:", queued_item)
+        self.assertIn("analyze this chart", queued_item)
+
+        # Confirmation received
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Image Queued", sent_text)
+        self.assertIn("#1", sent_text)
+
+    async def test_negative_queue_capacity_overflow(self):
+        """Negative Path 1: Queue capacity guard rejects excess items once limit is reached."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1004
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot.max_queue_size = 3
+
+        # Pre-fill queue to capacity
+        self.bot._task_queues[chat_id] = ["msg 1", "msg 2", "msg 3"]
+
+        # Attempt to enqueue 4th item
+        update = {
+            "update_id": 9,
+            "message": {
+                "message_id": 40,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "msg 4 (should be rejected)",
+            },
+        }
+        await self.bot.process_update(update)
+
+        # Queue remained at capacity of 3
+        self.assertEqual(len(self.bot._task_queues[chat_id]), 3)
+        self.assertNotIn("msg 4 (should be rejected)", self.bot._task_queues[chat_id])
+
+        # Polite queue-full warning dispatched
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Task Queue Full", sent_text)
+        self.assertIn("3/3", sent_text)
+
+    async def test_negative_empty_or_whitespace_message_during_active_task(self):
+        """Negative Path 2: Empty or pure whitespace messages during active tasks are rejected without queue pollution."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1005
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+
+        update = {
+            "update_id": 11,
+            "message": {
+                "message_id": 50,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "    \n\t   ",
+            },
+        }
+        await self.bot.process_update(update)
+
+        # Queue must remain empty
+        self.assertEqual(len(self.bot._task_queues.get(chat_id, [])), 0)
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Please send text queries", sent_text)
+
+    async def test_negative_active_task_crash_resilience(self):
+        """Negative Path 3: If active task crashes with an error, the queue recovers and processes the next item."""
+        from unittest.mock import AsyncMock, patch
+
+        chat_id = 1006
+        user_id = 999
+
+        # Queue a subsequent task
+        self.bot._task_queues[chat_id] = ["resilient queued task after crash"]
+
+        # Simulate forward_stream raising an unhandled exception
+        async def mock_crashing_stream(*args, **kwargs):
+            raise RuntimeError("Agy proxy engine connection severed")
+            yield  # pragma: no cover
+
+        self.bot.forwarder.forward_stream = mock_crashing_stream
+        self.bot._run_queued_task = AsyncMock()
+
+        # Run real handle_chat_message for primary task
+        from gemini_hermes.gateway.telegram_bot import TelegramBot
+        await TelegramBot.handle_chat_message(self.bot, chat_id, user_id, "task that will crash")
+        import asyncio
+        await asyncio.sleep(0.01)
+
+        # Active task was cleared from active tasks dictionary
+        self.assertNotIn(chat_id, self.bot._active_tasks)
+
+        # Next queued item was automatically popped and triggered via _run_queued_task
+        self.bot._run_queued_task.assert_called_once_with(chat_id, user_id, "resilient queued task after crash")
+        self.assertEqual(len(self.bot._task_queues.get(chat_id, [])), 0)
+
+    async def test_negative_cancel_aborts_active_and_purges_queue(self):
+        """Negative Path 4: /cancel aborts ongoing task and flushes all automatically queued chat items."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1007
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot._task_queues[chat_id] = ["queued 1", "queued 2", "queued 3"]
+
+        update = {
+            "update_id": 15,
+            "message": {
+                "message_id": 60,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "/cancel",
+            },
+        }
+        await self.bot.process_update(update)
+
+        # Active task cancelled
+        mock_task.cancel.assert_called_once()
+        # Queue purged
+        self.assertEqual(len(self.bot._task_queues.get(chat_id, [])), 0)
+
+        # Cancellation message verified
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Ongoing task cancelled and 3 queued item(s) cleared", sent_text)
+
+    async def test_negative_reset_aborts_active_and_purges_queue(self):
+        """Negative Path 5: /reset aborts active execution and clears task queues."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1008
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot._task_queues[chat_id] = ["queued 1", "queued 2"]
+
+        update = {
+            "update_id": 16,
+            "message": {
+                "message_id": 70,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "/reset",
+            },
+        }
+        await self.bot.process_update(update)
+
+        mock_task.cancel.assert_called_once()
+        self.assertEqual(len(self.bot._task_queues.get(chat_id, [])), 0)
+        sent_text = self.bot.send_message.call_args[0][1]
+        self.assertIn("Conversation reset", sent_text)
+
+    async def test_negative_steer_preserves_queue_without_premature_trigger(self):
+        """Negative Path 6: /steer redirects active task without dropping or prematurely popping queued items."""
+        from unittest.mock import MagicMock
+
+        chat_id = 1009
+        user_id = 999
+        mock_task = MagicMock()
+        mock_task.done.return_value = False
+        self.bot._active_tasks[chat_id] = mock_task
+        self.bot._active_task_info[chat_id] = {
+            "text": "Initial task",
+            "last_action": "running",
+            "user_id": user_id,
+            "start_time": 100.0,
+        }
+        self.bot._task_queues[chat_id] = ["pending item A", "pending item B"]
+
+        update = {
+            "update_id": 17,
+            "message": {
+                "message_id": 80,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id},
+                "text": "/steer pivot now to new direction",
+            },
+        }
+        await self.bot.process_update(update)
+
+        # Active task was cancelled
+        mock_task.cancel.assert_called_once()
+
+        # The queued items were NOT popped during the steering handoff
+        self.assertEqual(self.bot._task_queues[chat_id], ["pending item A", "pending item B"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

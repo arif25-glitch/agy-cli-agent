@@ -46,6 +46,7 @@ class TelegramBot:
         self._active_tasks: Dict[int, asyncio.Task] = {}
         self._active_task_info: Dict[int, Dict[str, Any]] = {}
         self._task_queues: Dict[int, List[str]] = {}
+        self.max_queue_size: int = 10
 
     async def _api_call(self, method: str, json_data: Optional[Dict[str, Any]] = None, timeout: float = 35.0) -> Any:
         if not self.client or self.client.is_closed:
@@ -624,6 +625,14 @@ class TelegramBot:
             # Steering directive or Queued Task
             if chat_id not in self._task_queues:
                 self._task_queues[chat_id] = []
+            max_q = getattr(self, "max_queue_size", 10)
+            if len(self._task_queues[chat_id]) >= max_q:
+                await self.send_message(
+                    chat_id,
+                    f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
+                    "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
+                )
+                return
             self._task_queues[chat_id].append(clean_query)
             q_pos = len(self._task_queues[chat_id])
 
@@ -717,6 +726,52 @@ class TelegramBot:
             self._active_tasks[chat_id] = task
             return
 
+    async def _enqueue_task(
+        self,
+        chat_id: int,
+        item: str,
+        item_type: str = "message",
+        preview_override: Optional[str] = None,
+    ) -> bool:
+        """
+        Enqueues an item (chat message, image prompt, doc prompt) into the sequential task queue.
+        Enforces max_queue_size to prevent runaway memory or queue exhaustion.
+        """
+        if chat_id not in self._task_queues:
+            self._task_queues[chat_id] = []
+
+        max_q = getattr(self, "max_queue_size", 10)
+        if len(self._task_queues[chat_id]) >= max_q:
+            await self.send_message(
+                chat_id,
+                f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
+                "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
+            )
+            return False
+
+        self._task_queues[chat_id].append(item)
+        q_pos = len(self._task_queues[chat_id])
+
+        if preview_override:
+            preview = preview_override
+        elif item_type == "image":
+            preview = "Attached Image Analysis"
+        elif item_type == "document":
+            preview = "Attached File Analysis"
+        else:
+            preview = item if len(item) <= 80 else item[:77] + "..."
+
+        type_label = item_type.capitalize()
+        await self.send_message(
+            chat_id,
+            f"📥 *{type_label} Queued* (`#{q_pos}` in queue)\n"
+            f"`{preview}`\n\n"
+            f"• *Status:* Active operation still executing\n"
+            f"• *Next:* Will run automatically once current task completes.\n"
+            f"• _Quick actions: `/steer <msg>` to redirect now | `/queue` | `/cancel`_",
+        )
+        return True
+
     async def handle_queue(self, chat_id: int):
         q = self._task_queues.get(chat_id, [])
         is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
@@ -730,7 +785,7 @@ class TelegramBot:
             last_act = info.get("last_action", "Running...")
             lines.append(f"• *[ACTIVE]* Currently: `{last_act}`\n")
         if q:
-            lines.append("*Queued /btw items:*")
+            lines.append("*Queued items:*")
             for i, item in enumerate(q, 1):
                 preview = item if len(item) <= 70 else item[:67] + "..."
                 lines.append(f"  {i}. `{preview}`")
@@ -740,13 +795,20 @@ class TelegramBot:
         await self.send_message(chat_id, "\n".join(lines))
 
     async def _run_queued_task(self, chat_id: int, user_id: int, text: str):
-        await asyncio.sleep(0.5)
-        await self.send_message(
-            chat_id,
-            f"⚡ *Starting queued /btw instruction:*\n`{text}`",
-        )
-        task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, text))
-        self._active_tasks[chat_id] = task
+        try:
+            await asyncio.sleep(0.5)
+            if text.startswith("[Attached User Image:"):
+                notice = "⚡ *Processing queued image analysis...*"
+            elif text.startswith("[Attached User File:"):
+                notice = "⚡ *Processing queued file analysis...*"
+            else:
+                preview = text if len(text) <= 80 else text[:77] + "..."
+                notice = f"⚡ *Processing queued task:*\n`{preview}`"
+            await self.send_message(chat_id, notice)
+            task = asyncio.create_task(self.handle_chat_message(chat_id, user_id, text))
+            self._active_tasks[chat_id] = task
+        except Exception as e:
+            logger.error(f"Error starting queued task for chat_id={chat_id}: {e}", exc_info=True)
 
     async def handle_chat_message(self, chat_id: int, user_id: int, user_text: str):
         curr_task = asyncio.current_task()
@@ -996,20 +1058,8 @@ class TelegramBot:
             await self.handle_unauthorized(chat_id, user_id)
             return
 
-        # Check for active running task to prevent race conditions & lock contention
-        is_command = bool(text and text.strip().startswith("/"))
-        if not is_command and chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
-            await self.send_message(
-                chat_id,
-                "⏳ *Still processing...*\n\n"
-                "I am currently working on your previous request. You can:\n"
-                "• Course-correct immediately with `/steer <new direction>`\n"
-                "• Ask a side question or queue a task with `/btw <message>`\n"
-                "• Check live status with `/status`\n"
-                "• View task queue with `/queue`\n"
-                "• Type `/cancel` to abort or `/reset` to start fresh."
-            )
-            return
+        # Check if an active task is running in background for this chat
+        is_task_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
 
         # Handle photos / images
         if photo:
@@ -1031,8 +1081,17 @@ class TelegramBot:
                         f"You MUST use your `view_file` tool to inspect this image file and see its visual contents, "
                         f"then provide your detailed analysis or answer to the user's caption."
                     )
-                    await self.handle_chat_message(chat_id, user_id, user_prompt)
-                    return
+                    if is_task_running:
+                        await self._enqueue_task(
+                            chat_id=chat_id,
+                            item=user_prompt,
+                            item_type="image",
+                            preview_override=f"Attached Image: {caption}" if caption else "Attached Image Analysis",
+                        )
+                        return
+                    else:
+                        await self.handle_chat_message(chat_id, user_id, user_prompt)
+                        return
                 else:
                     await self.send_message(chat_id, "⚠️ Failed to download the attached image. Please try again.")
                     return
@@ -1064,13 +1123,22 @@ class TelegramBot:
                         f"System Instruction: The user has attached a file in Telegram, saved on disk at '{local_path}'. "
                         f"{instruction} Then respond directly to the user."
                     )
-                    await self.handle_chat_message(chat_id, user_id, user_prompt)
-                    return
+                    if is_task_running:
+                        await self._enqueue_task(
+                            chat_id=chat_id,
+                            item=user_prompt,
+                            item_type="document",
+                            preview_override=f"File ({file_name}): {caption}" if caption else f"Attached File: {file_name}",
+                        )
+                        return
+                    else:
+                        await self.handle_chat_message(chat_id, user_id, user_prompt)
+                        return
                 else:
                     await self.send_message(chat_id, "⚠️ Failed to download the attached file. Please try again.")
                     return
 
-        if not text:
+        if not text or not text.strip():
             await self.send_message(chat_id, "ℹ️ Please send text queries, commands, images, or documents.")
             return
 
@@ -1148,7 +1216,10 @@ class TelegramBot:
             else:
                 await self.send_message(chat_id, f"❓ Unknown command: `{cmd}`. Type `/help` for available commands.")
         else:
-            await self.handle_chat_message(chat_id, user_id, text)
+            if is_task_running:
+                await self._enqueue_task(chat_id, text, item_type="message")
+            else:
+                await self.handle_chat_message(chat_id, user_id, text)
 
     async def run(self):
         if not self.token:

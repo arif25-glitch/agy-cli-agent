@@ -5,6 +5,25 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.1] - 2026-09-22
+
+### Added
+- **Automatic Chat Queueing ("Zero Message Drop")**: Upgraded Telegram gateway (`gemini_hermes/gateway/telegram_bot.py`) to automatically enqueue incoming user messages and attachments sent without slash commands during active execution, completely eliminating dropped messages.
+- **Queue Capacity Guard (`max_queue_size = 10`)**: Protected execution memory with an explicit capacity limit that rejects excess messages gracefully with an alert if the queue fills up.
+- **Dual Verification Test Suite for Auto Chat Queueing**: Added `TestAutoChatQueue` in `tests/test_gemini_hermes.py` covering:
+  * `test_positive_auto_queue_single_chat`: Plain chat enqueued with position `#1` confirmation and executed upon task completion.
+  * `test_positive_auto_queue_multiple_chats_sequential`: 3 consecutive chats queued in FIFO order and displayed in `/queue`.
+  * `test_positive_queue_image_attachment`: Photo attachments queued and structured into vision inspection prompts.
+  * `test_negative_queue_capacity_overflow`: Enforcing 10-item cap; excess items rejected gracefully with queue-full alert.
+  * `test_negative_empty_or_whitespace_message_during_active_task`: Whitespace/empty messages rejected without queue pollution.
+  * `test_negative_active_task_crash_resilience`: Engine crash/unhandled exception does not stall queue; next item executes cleanly.
+  * `test_negative_cancel_aborts_active_and_purges_queue`: `/cancel` aborts ongoing task and purges all queued messages.
+  * `test_negative_reset_aborts_active_and_purges_queue`: `/reset` aborts active task and clears task queues.
+  * `test_negative_steer_preserves_queue_without_premature_trigger`: `/steer` mid-flight redirects without premature queue execution.
+
+### Changed
+- **Polished Queue Progress Display**: Enhanced `handle_queue` and `_run_queued_task` to format plain text messages and image/file attachments cleanly.
+
 ## [1.5.0] - 2026-09-21
 
 ### Added

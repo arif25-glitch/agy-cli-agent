@@ -2,9 +2,21 @@
 
 ## Active Tasks
 
-- (Active tasks will be tracked here)
-
-
+- [x] Dual Verification completed for Automatic Chat Queueing ("Zero Message Drop"):
+  * Phase 1 (Goal & Boundary): Auto-enqueue incoming plain messages and attachments sent without slash commands during active execution instead of dropping them.
+  * Phase 2 (Architecture & Capacity): Designed `_enqueue_task` with `max_queue_size = 10` capacity guard, real-time position notification, and safe sequential queue drain.
+  * Phase 3 (Incremental Draft): Upgraded `gemini_hermes/gateway/telegram_bot.py` message routing, media handling, `_run_queued_task`, and `handle_queue`.
+  * Phase 4 (Dual Verification - 3 Positive + 6 Negative Tests):
+    - Positive 1 (`test_positive_auto_queue_single_chat`): Plain chat enqueued with position `#1` confirmation and executed upon task completion.
+    - Positive 2 (`test_positive_auto_queue_multiple_chats_sequential`): 3 consecutive chats queued in FIFO order and displayed in `/queue`.
+    - Positive 3 (`test_positive_queue_image_attachment`): Photo attachments queued and structured into vision inspection prompts.
+    - Negative 1 (`test_negative_queue_capacity_overflow`): Enforcing 10-item cap; excess items rejected gracefully with queue-full alert.
+    - Negative 2 (`test_negative_empty_or_whitespace_message_during_active_task`): Whitespace/empty messages rejected without queue pollution.
+    - Negative 3 (`test_negative_active_task_crash_resilience`): Engine crash/unhandled exception does not stall queue; next item executes cleanly.
+    - Negative 4 (`test_negative_cancel_aborts_active_and_purges_queue`): `/cancel` aborts ongoing task and purges all queued messages.
+    - Negative 5 (`test_negative_reset_aborts_active_and_purges_queue`): `/reset` aborts active task and clears task queues.
+    - Negative 6 (`test_negative_steer_preserves_queue_without_premature_trigger`): `/steer` mid-flight redirects without premature queue execution.
+  * Phase 5 (Documentation & Release): Updated CHANGELOG.md (v1.5.0), README.md, and physical memory.
 - [x] Dual Verification completed for `task_watcher`: Negative path (intercepted TypeScript compilation break TS2322/TS2339/TS2304) and Positive path (clean build + prerendered `/dashboard` route with 100% artifact verification).
 - [x] Dual Verification completed for `Zero Status Spam` (In-Place Message Editing):
   * Positive path (`test_positive_in_place_status_flow`): Verified single message handle is updated dynamically across multiple tool steps with zero new bubble emissions.
