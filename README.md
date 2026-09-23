@@ -23,34 +23,34 @@ Gemini-Hermes follows a Direct Autonomous Orchestrator body-brain design:
 
 ```mermaid
 flowchart TD
-    User([Telegram User]) <-->|Messages, Media, /btw & /steer| TG[Telegram Gateway\n(Long Polling / httpx / Formatter)]
+    User(["Telegram User"]) <-->|"Messages, Media, /btw & /steer"| TG["Telegram Gateway<br/>(Long Polling / httpx / Formatter)"]
     
-    subgraph Gemini-Hermes Core [Gemini-Hermes Execution Engine]
-        TG --> Router[Message Router & Concurrency Guard]
-        Router --> Queue[Task Queue & /btw Dispatcher]
-        Queue --> PromptEngine[Prompt & Persona Engine]
+    subgraph Core ["Gemini-Hermes Execution Engine"]
+        TG --> Router["Message Router & Concurrency Guard"]
+        Router --> Queue["Task Queue & /btw Dispatcher"]
+        Queue --> PromptEngine["Prompt & Persona Engine"]
         
-        subgraph Persistent State Layer
-            MemStore[(Hot Working Memory\nMEMORY.md, USER.md,\nBACKLOG.md, REFERENCES.md)]
-            Archive[(Warm Memory Archive\ndata/memory/archive/)]
-            ProjStore[(Project State Index\ndata/projects/projects.json)]
-            Skills[(Skills Catalog\n9 Modular Procedures)]
-            Sessions[(SessionDB\nTurn Metrics & History)]
+        subgraph Storage ["Persistent State Layer"]
+            MemStore[("Hot Working Memory<br/>MEMORY.md, USER.md,<br/>BACKLOG.md, REFERENCES.md")]
+            Archive[("Warm Memory Archive<br/>data/memory/archive/")]
+            ProjStore[("Project State Index<br/>data/projects/projects.json")]
+            Skills[("Skills Catalog<br/>9 Modular Procedures")]
+            Sessions[("SessionDB<br/>Turn Metrics & History")]
         end
         
         MemStore --> PromptEngine
-        Archive -.->|On-Demand Retrieval| PromptEngine
+        Archive -.->|"On-Demand Retrieval"| PromptEngine
         ProjStore --> PromptEngine
         Skills --> PromptEngine
         Sessions --> PromptEngine
         
-        PromptEngine --> Forwarder[Antigravity Proxy Forwarder\n(300s Inactivity Reset / 900s Ceiling)]
+        PromptEngine --> Forwarder["Antigravity Proxy Forwarder<br/>(300s Inactivity Reset / 900s Ceiling)"]
     end
     
-    Forwarder <-->|Stream NDJSON / Turn IO| AGY[Antigravity CLI\n(agy -p ... --output-format stream-json)]
-    AGY <--> LLM[Google Gemini 3.8 Flash / Pro Engine]
+    Forwarder <-->|"Stream NDJSON / Turn IO"| AGY["Antigravity CLI<br/>(agy -p ... --output-format stream-json)"]
+    AGY <--> LLM["Google Gemini 3.8 Flash / Pro Engine"]
     
-    Forwarder -->|Real-Time Tool Actions & Status| TG
+    Forwarder -->|"Real-Time Tool Actions & Status"| TG
 ```
 
 ---
