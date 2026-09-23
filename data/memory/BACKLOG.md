@@ -2,6 +2,27 @@
 
 ## Active Tasks
 
+- [x] Dual Verification completed for Telegram Targeted Quoting & Contextual Reply Awareness:
+  * Phase 1 (Goal & Boundary): Support bi-directional Telegram message replying: outbound reply targeting (`reply_to_message_id`, `reply_parameters`) and inbound reply context extraction (`reply_to_message`).
+  * Phase 2 (Architecture & Resilience): Dual Telegram API fallback (strips formatting, then reply params if message was deleted/rejected); comprehensive media extraction (photo, document, voice, audio, video, sticker, poll, location, contact); command context preservation (`/btw`, `/steer`); and queued task metadata continuity via `QueuedTask`.
+  * Phase 3 (Incremental Draft): Implemented in `gemini_hermes/gateway/telegram_bot.py` with non-dict payload protection, whitespace sanitization, and 300-char truncation.
+  * Phase 4 (Dual Verification - 4 Positive + 10 Negative Tests in `TestChatReply`):
+    - Positive 1 (`test_positive_direct_message_reply_payload`): Outbound message attaches reply parameters with `allow_sending_without_reply=True`.
+    - Positive 2 (`test_positive_queued_tasks_retain_message_id_and_reply`): Queued tasks retain originating message_id and quote original user message on drain.
+    - Positive 3 (`test_positive_inbound_reply_to_message_context_injection`): Quoting a text message injects sender name and quoted text into prompt.
+    - Positive 4 (`test_positive_inbound_reply_to_media_context`): Quoting photo or document injects media summary into prompt.
+    - Negative 1 (`test_negative_deleted_message_resilience_and_markdown_fallback`): Graceful fallback payload retains reply_to_message_id and allow_sending_without_reply.
+    - Negative 2 (`test_negative_plain_string_queue_items_fallback_cleanly`): Legacy plain string queue items execute cleanly with `None` reply ID.
+    - Negative 3 (`test_negative_secondary_fallback_without_reply_when_telegram_rejects_reply_parameters`): If Telegram API rejects reply targeting on both attempts, automatically falls back to direct delivery without reply parameters (zero message drop).
+    - Negative 4 (`test_negative_malformed_non_dict_reply_to_message_resilience`): Non-dict `reply_to_message` payloads (int, str, None) handled without exceptions.
+    - Negative 5 (`test_negative_empty_or_whitespace_reply_text_sanitization`): Whitespace-only reply text sanitized; prevents empty quote artifacts (`""`).
+    - Negative 6 (`test_negative_inbound_reply_to_diverse_media_types`): Inbound replies to voice, audio, video, sticker (with/without emoji), poll, location, and contact inject descriptive context.
+    - Negative 7 (`test_negative_inbound_reply_from_anonymous_channel_sender`): Quoting channel posts uses `sender_chat.title` or `User` fallback.
+    - Negative 8 (`test_negative_command_with_reply_context_preservation`): `/btw` and `/steer` commands preserve reply context when executed as replies.
+    - Negative 9 (`test_negative_queued_image_with_reply_context_notice`): Queued images with prepended reply context properly emit image processing notices.
+    - Negative 10 (`test_negative_reply_text_long_truncation`): Inbound quoted messages exceeding 300 characters are cleanly truncated with `...`.
+  * Phase 5 (Documentation & Release): Committed to `develop/chat-reply`.
+
 - [x] Dual Verification completed for Automatic Chat Queueing ("Zero Message Drop"):
   * Phase 1 (Goal & Boundary): Auto-enqueue incoming plain messages and attachments sent without slash commands during active execution instead of dropping them.
   * Phase 2 (Architecture & Capacity): Designed `_enqueue_task` with `max_queue_size = 10` capacity guard, real-time position notification, and safe sequential queue drain.

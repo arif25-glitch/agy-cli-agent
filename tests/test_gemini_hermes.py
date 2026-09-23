@@ -1418,6 +1418,281 @@ class TestChatReply(unittest.IsolatedAsyncioTestCase):
         )
 
 
+    async def test_negative_secondary_fallback_without_reply_when_telegram_rejects_reply_parameters(self):
+        """Negative Path 3: If Telegram rejects reply targeting on both attempts, send directly without reply params."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2007
+        msg_id = 99999
+
+        # Simulate:
+        # Call 1 (with markdown + reply): 400 Bad Request
+        # Call 2 (fallback without markdown + reply): 400 Bad Request: message to be replied not found
+        # Call 3 (fallback without reply parameters): 200 OK
+        self.bot._api_call = AsyncMock(side_effect=[
+            {"ok": False, "description": "Bad Request: can't parse entities"},
+            {"ok": False, "description": "Bad Request: message to be replied not found"},
+            {"ok": True, "result": {"message_id": 99001}},
+        ])
+
+        res = await self.bot.send_message(chat_id, "Crucial alert *text*", reply_to_message_id=msg_id)
+        self.assertEqual(res, 99001)
+        self.assertEqual(self.bot._api_call.call_count, 3)
+
+        # 3rd call should have completely stripped reply parameters
+        final_call_args = self.bot._api_call.call_args_list[2][0]
+        final_payload = final_call_args[1]
+        self.assertNotIn("reply_to_message_id", final_payload)
+        self.assertNotIn("reply_parameters", final_payload)
+        self.assertEqual(final_payload["text"], "Crucial alert *text*")
+
+    async def test_negative_malformed_non_dict_reply_to_message_resilience(self):
+        """Negative Path 4: Malformed or non-dict reply_to_message in update does not cause crash or unhandled exception."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2008
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        # Update with non-dict reply_to_message (e.g. integer or string)
+        malformed_updates = [
+            {"update_id": 10, "message": {"message_id": 401, "chat": {"id": chat_id}, "from": {"id": user_id}, "text": "hello", "reply_to_message": "not_a_dict"}},
+            {"update_id": 11, "message": {"message_id": 402, "chat": {"id": chat_id}, "from": {"id": user_id}, "text": "world", "reply_to_message": 12345}},
+            {"update_id": 12, "message": {"message_id": 403, "chat": {"id": chat_id}, "from": {"id": user_id}, "text": "test", "reply_to_message": None}},
+        ]
+
+        for u in malformed_updates:
+            await self.bot.process_update(u)
+
+        self.assertEqual(self.bot.handle_chat_message.call_count, 3)
+
+    async def test_negative_empty_or_whitespace_reply_text_sanitization(self):
+        """Negative Path 5: Whitespace-only or empty reply text falls back cleanly without empty quotes."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2009
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        update = {
+            "update_id": 13,
+            "message": {
+                "message_id": 404,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "What about this?",
+                "reply_to_message": {
+                    "message_id": 300,
+                    "from": {"id": 123, "first_name": "Arif"},
+                    "text": "   \n\t  ",
+                },
+            },
+        }
+
+        await self.bot.process_update(update)
+
+        self.bot.handle_chat_message.assert_called_once()
+        prompt = self.bot.handle_chat_message.call_args[0][2]
+        self.assertNotIn('""', prompt)
+        self.assertIn("[Replying to message from Arif]\n\nWhat about this?", prompt)
+
+    async def test_negative_inbound_reply_to_diverse_media_types(self):
+        """Negative Path 6: Replying to voice, audio, video, sticker, poll, location, or contact injects descriptive metadata."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2010
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        media_test_cases = [
+            ({"voice": {"file_id": "v1"}}, "[Replying to voice message from Alice]"),
+            ({"audio": {"title": "Podcast Ep 1"}}, "[Replying to audio (Podcast Ep 1) from Alice]"),
+            ({"video": {"file_id": "vid1"}}, "[Replying to video from Alice]"),
+            ({"sticker": {"emoji": "🚀"}}, "[Replying to sticker 🚀 from Alice]"),
+            ({"sticker": {}}, "[Replying to sticker from Alice]"),
+            ({"poll": {"question": "Deploy to prod?"}}, '[Replying to poll "Deploy to prod?" from Alice]'),
+            ({"location": {"latitude": 12.34}}, "[Replying to shared location from Alice]"),
+            ({"contact": {"first_name": "Bob"}}, "[Replying to shared contact (Bob) from Alice]"),
+        ]
+
+        for reply_dict, expected_context in media_test_cases:
+            self.bot.handle_chat_message.reset_mock()
+            reply_dict["from"] = {"first_name": "Alice"}
+            update = {
+                "update_id": 14,
+                "message": {
+                    "message_id": 405,
+                    "chat": {"id": chat_id},
+                    "from": {"id": user_id, "first_name": "Tester"},
+                    "text": "Check this",
+                    "reply_to_message": reply_dict,
+                },
+            }
+            await self.bot.process_update(update)
+            prompt = self.bot.handle_chat_message.call_args[0][2]
+            self.assertIn(expected_context, prompt)
+
+    async def test_negative_inbound_reply_from_anonymous_channel_sender(self):
+        """Negative Path 7: Replying to channel message without 'from' uses sender_chat title or User fallback."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2011
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        # Channel message with sender_chat
+        update_channel = {
+            "update_id": 15,
+            "message": {
+                "message_id": 406,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Tester"},
+                "text": "Explain this announcement",
+                "reply_to_message": {
+                    "message_id": 305,
+                    "sender_chat": {"title": "Release Channel"},
+                    "text": "v2.0 is out now",
+                },
+            },
+        }
+        await self.bot.process_update(update_channel)
+        prompt = self.bot.handle_chat_message.call_args[0][2]
+        self.assertIn('[Replying to message from Release Channel: "v2.0 is out now"]', prompt)
+
+        # Neither from nor sender_chat present
+        self.bot.handle_chat_message.reset_mock()
+        update_no_sender = {
+            "update_id": 16,
+            "message": {
+                "message_id": 407,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Tester"},
+                "text": "What about this?",
+                "reply_to_message": {
+                    "message_id": 306,
+                    "text": "Anonymous post",
+                },
+            },
+        }
+        await self.bot.process_update(update_no_sender)
+        prompt_anon = self.bot.handle_chat_message.call_args[0][2]
+        self.assertIn('[Replying to message from User: "Anonymous post"]', prompt_anon)
+
+    async def test_negative_command_with_reply_context_preservation(self):
+        """Negative Path 8: Commands (/btw and /steer) executed while quoting an earlier message preserve reply_context."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2012
+        user_id = 888
+
+        self.bot.handle_btw = AsyncMock()
+        self.bot.handle_steer = AsyncMock()
+
+        # /btw quoting a message
+        update_btw = {
+            "update_id": 17,
+            "message": {
+                "message_id": 408,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "/btw why is this logic needed?",
+                "reply_to_message": {
+                    "message_id": 250,
+                    "from": {"first_name": "Gemini-Hermes"},
+                    "text": "if not res.get('ok'): fallback()",
+                },
+            },
+        }
+        await self.bot.process_update(update_btw)
+        self.bot.handle_btw.assert_called_once()
+        btw_arg = self.bot.handle_btw.call_args[0][2]
+        self.assertIn('[Replying to message from Gemini-Hermes: "if not res.get(\'ok\'): fallback()"]', btw_arg)
+        self.assertIn("why is this logic needed?", btw_arg)
+
+        # /steer quoting a message
+        update_steer = {
+            "update_id": 18,
+            "message": {
+                "message_id": 409,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "/steer simplify this approach",
+                "reply_to_message": {
+                    "message_id": 251,
+                    "from": {"first_name": "Gemini-Hermes"},
+                    "text": "complex multi-stage pipeline",
+                },
+            },
+        }
+        await self.bot.process_update(update_steer)
+        self.bot.handle_steer.assert_called_once()
+        steer_arg = self.bot.handle_steer.call_args[0][2]
+        self.assertIn('[Replying to message from Gemini-Hermes: "complex multi-stage pipeline"]', steer_arg)
+        self.assertIn("simplify this approach", steer_arg)
+
+    async def test_negative_queued_image_with_reply_context_notice(self):
+        """Negative Path 9: Queued image item with prepended reply context still emits image processing notice."""
+        from unittest.mock import AsyncMock
+        from gemini_hermes.gateway.telegram_bot import QueuedTask
+
+        chat_id = 2013
+        user_id = 888
+
+        self.bot.send_message = AsyncMock(return_value=1234)
+        self.bot.handle_chat_message = AsyncMock()
+
+        # Task with reply context prepended before image marker
+        queued_img_text = (
+            '[Replying to message from Arif: "take a look at this"]\n\n'
+            '[Attached User Image: /tmp/photo.jpg]\n'
+            'Caption / Question: What does this chart show?'
+        )
+        task = QueuedTask(queued_img_text, message_id=501, item_type="image")
+
+        await self.bot._run_queued_task(chat_id, user_id, task)
+
+        self.bot.send_message.assert_called_once()
+        notice_sent = self.bot.send_message.call_args[0][1]
+        self.assertEqual(notice_sent, "⚡ *Processing queued image analysis...*")
+        self.assertEqual(self.bot.send_message.call_args[1].get("reply_to_message_id"), 501)
+
+    async def test_negative_reply_text_long_truncation(self):
+        """Negative Path 10: Inbound quoted text exceeding 300 chars is cleanly truncated to prevent context bloat."""
+        from unittest.mock import AsyncMock
+
+        chat_id = 2014
+        user_id = 888
+
+        self.bot.handle_chat_message = AsyncMock()
+
+        long_code = "A" * 500
+        update = {
+            "update_id": 19,
+            "message": {
+                "message_id": 410,
+                "chat": {"id": chat_id},
+                "from": {"id": user_id, "first_name": "Arif"},
+                "text": "Refactor this snippet",
+                "reply_to_message": {
+                    "message_id": 260,
+                    "from": {"first_name": "Arif"},
+                    "text": long_code,
+                },
+            },
+        }
+
+        await self.bot.process_update(update)
+
+        self.bot.handle_chat_message.assert_called_once()
+        prompt = self.bot.handle_chat_message.call_args[0][2]
+        expected_preview = "A" * 297 + "..."
+        self.assertIn(f'[Replying to message from Arif: "{expected_preview}"]', prompt)
+
+
 if __name__ == "__main__":
     unittest.main()
 

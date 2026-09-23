@@ -127,17 +127,25 @@ class TelegramBot:
                 "allow_sending_without_reply": True,
             }
         res = await self._api_call("sendMessage", payload)
-        if not res.get("ok") and parse_mode:
-            # Fallback without markdown parsing if syntax error occurs
-            fallback_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
-            if reply_to_message_id:
-                fallback_payload["reply_to_message_id"] = reply_to_message_id
-                fallback_payload["allow_sending_without_reply"] = True
-                fallback_payload["reply_parameters"] = {
-                    "message_id": reply_to_message_id,
-                    "allow_sending_without_reply": True,
-                }
-            res = await self._api_call("sendMessage", fallback_payload)
+        if not res.get("ok"):
+            # Fallback 1: without markdown parsing if syntax error occurred
+            if parse_mode:
+                fallback_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+                if reply_to_message_id:
+                    fallback_payload["reply_to_message_id"] = reply_to_message_id
+                    fallback_payload["allow_sending_without_reply"] = True
+                    fallback_payload["reply_parameters"] = {
+                        "message_id": reply_to_message_id,
+                        "allow_sending_without_reply": True,
+                    }
+                res = await self._api_call("sendMessage", fallback_payload)
+
+            # Fallback 2: if still failing and reply was targeted, send directly without reply parameters
+            # (protects against Telegram API rejecting invalid/deleted message reply references)
+            if not res.get("ok") and reply_to_message_id:
+                direct_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
+                res = await self._api_call("sendMessage", direct_payload)
+
         if res.get("ok"):
             return res["result"]["message_id"]
         return None
@@ -861,9 +869,10 @@ class TelegramBot:
             if reply_to_message_id is None:
                 reply_to_message_id = getattr(text, "message_id", None)
 
-            if text.startswith("[Attached User Image:"):
+            item_type = getattr(text, "item_type", "")
+            if item_type == "image" or "[Attached User Image:" in text:
                 notice = "⚡ *Processing queued image analysis...*"
-            elif text.startswith("[Attached User File:"):
+            elif item_type == "document" or "[Attached User File:" in text:
                 notice = "⚡ *Processing queued file analysis...*"
             else:
                 preview = text if len(text) <= 80 else text[:77] + "..."
@@ -1151,20 +1160,53 @@ class TelegramBot:
 
         # Contextual quoting from inbound Telegram replies
         reply_context = ""
-        if reply_to:
-            r_from = reply_to.get("from", {})
-            r_sender = r_from.get("first_name") or r_from.get("username") or "User"
-            r_text = reply_to.get("text") or reply_to.get("caption") or ""
+        if isinstance(reply_to, dict):
+            r_from = reply_to.get("from") or {}
+            r_sender = (
+                r_from.get("first_name")
+                or r_from.get("username")
+                or reply_to.get("sender_chat", {}).get("title")
+                or "User"
+            )
+            r_text = (reply_to.get("text") or reply_to.get("caption") or "").strip()
             if r_text:
-                r_preview = r_text.strip()
-                if len(r_preview) > 300:
-                    r_preview = r_preview[:297] + "..."
-                reply_context = f'[Replying to message from {r_sender}: "{r_preview}"]\n\n'
-            elif reply_to.get("photo"):
+                if len(r_text) > 300:
+                    r_text = r_text[:297] + "..."
+                reply_context = f'[Replying to message from {r_sender}: "{r_text}"]\n\n'
+            elif "photo" in reply_to and reply_to["photo"] is not None:
                 reply_context = f"[Replying to photo from {r_sender}]\n\n"
-            elif reply_to.get("document"):
-                doc_name = reply_to.get("document", {}).get("file_name", "file")
+            elif "document" in reply_to and reply_to["document"] is not None:
+                doc = reply_to.get("document") or {}
+                doc_name = doc.get("file_name", "file") if isinstance(doc, dict) else "file"
                 reply_context = f"[Replying to file ({doc_name}) from {r_sender}]\n\n"
+            elif "voice" in reply_to and reply_to["voice"] is not None:
+                reply_context = f"[Replying to voice message from {r_sender}]\n\n"
+            elif "audio" in reply_to and reply_to["audio"] is not None:
+                aud = reply_to.get("audio") or {}
+                audio_title = aud.get("title", "audio") if isinstance(aud, dict) else "audio"
+                reply_context = f"[Replying to audio ({audio_title}) from {r_sender}]\n\n"
+            elif "video" in reply_to and reply_to["video"] is not None:
+                reply_context = f"[Replying to video from {r_sender}]\n\n"
+            elif "sticker" in reply_to and reply_to["sticker"] is not None:
+                stk = reply_to.get("sticker") or {}
+                emoji = stk.get("emoji", "") if isinstance(stk, dict) else ""
+                reply_context = (
+                    f"[Replying to sticker {emoji} from {r_sender}]\n\n"
+                    if emoji
+                    else f"[Replying to sticker from {r_sender}]\n\n"
+                )
+            elif "poll" in reply_to and reply_to["poll"] is not None:
+                pl = reply_to.get("poll") or {}
+                poll_q = pl.get("question", "poll") if isinstance(pl, dict) else "poll"
+                reply_context = f'[Replying to poll "{poll_q}" from {r_sender}]\n\n'
+            elif "location" in reply_to and reply_to["location"] is not None:
+                reply_context = f"[Replying to shared location from {r_sender}]\n\n"
+            elif "contact" in reply_to and reply_to["contact"] is not None:
+                cnt = reply_to.get("contact") or {}
+                contact_name = cnt.get("first_name", "contact") if isinstance(cnt, dict) else "contact"
+                reply_context = f"[Replying to shared contact ({contact_name}) from {r_sender}]\n\n"
+            else:
+                reply_context = f"[Replying to message from {r_sender}]\n\n"
 
         # Handle photos / images
         if photo:
@@ -1291,9 +1333,11 @@ class TelegramBot:
                     "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",
                 )
             elif cmd == "/btw":
-                await self.handle_btw(chat_id, user_id, arg, message_id=message_id)
+                effective_arg = f"{reply_context}{arg}" if reply_context and arg else arg
+                await self.handle_btw(chat_id, user_id, effective_arg, message_id=message_id)
             elif cmd in ("/steer", "/steer:"):
-                await self.handle_steer(chat_id, user_id, arg, message_id=message_id)
+                effective_arg = f"{reply_context}{arg}" if reply_context and arg else arg
+                await self.handle_steer(chat_id, user_id, effective_arg, message_id=message_id)
             elif cmd == "/queue":
                 await self.handle_queue(chat_id)
             elif cmd == "/cancel":
