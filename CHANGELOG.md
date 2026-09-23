@@ -5,6 +5,18 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.2] - 2026-09-23
+
+### Added
+- **Targeted Telegram Message Quoting & Contextual Reply Awareness**:
+  * **Outbound Message Targeting**: Bot responses and initial thinking status bubbles pass `reply_to_message_id` and Telegram 7.0+ `reply_parameters` with `allow_sending_without_reply=True`, visually linking bot answers to originating user prompts.
+  * **Inbound Reply Context Extraction**: When users swipe or reply to messages in Telegram, contextual metadata (`[Replying to message from <Sender>: "<quoted preview>"]`) is automatically extracted and injected into the prompt context.
+  * **Broad Media Type Quoting**: Full inbound quote support for text, photos, documents, voice messages, audio files, videos, stickers (with emoji), polls, shared locations, and contacts.
+  * **Secondary Zero-Drop Fallback**: If Telegram API rejects reply targeting on both Markdown and plain-text attempts (e.g. deleted message or server mismatch), `send_message` automatically strips reply parameters and sends directly to guarantee zero message loss.
+  * **Command Reply Context Preservation**: Commands such as `/btw` and `/steer` preserve quoted context when invoked via message replies.
+  * **Metadata Continuity in Task Queue**: Added `QueuedTask` string subclass ensuring queued items preserve originating `message_id` across FIFO queues and drain cycles.
+- **Dual Verification Test Suite for Chat Reply (`TestChatReply`)**: Added 14 unit and integration tests (4 Positive + 10 Negative stress tests) in `tests/test_gemini_hermes.py`, bringing total project tests to 62 (100% pass rate).
+
 ## [1.5.1] - 2026-09-22
 
 ### Added

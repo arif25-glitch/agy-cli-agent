@@ -1,8 +1,11 @@
-# 🪐 Gemini-Hermes AI Agent `v1.5.1`
+# 🪐 Gemini-Hermes AI Agent `v1.5.2`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.5.1 Highlights:**
+> **Release v1.5.2 Highlights:**
+> - **Targeted Telegram Message Quoting & Contextual Reply Awareness**: Full bi-directional reply targeting with Telegram visual quote headers (`reply_to_message_id` & `reply_parameters` with `allow_sending_without_reply=True`) and inbound contextual quoting across 9 media types (text, photo, document, voice, audio, video, sticker, poll, location, contact).
+> - **Secondary Zero-Drop Fallback**: If Telegram API rejects reply targeting on both Markdown and plain attempts (e.g. deleted message or server mismatch), the gateway automatically strips reply parameters and delivers directly to guarantee zero lost messages.
+> - **Command Reply Context Preservation**: Commands such as `/btw` and `/steer` maintain full quoted message context when invoked via message replies.
 > - **Automatic Chat Queueing ("Zero Message Drop")**: Natural multi-message conversational flow on Telegram without slash commands. All plain text messages, photos, and documents sent mid-flight are automatically enqueued into a sequential FIFO queue.
 > - **Capacity Protection Guard**: Hardened task queue with `max_queue_size = 10` capacity protection and instant `#1 in queue` position feedback.
 > - **Tiered Quality Memory Architecture**: Structured separation between fast in-prompt working context ("Hot Memory") and permanent on-disk archives ("Warm Memory" in `data/memory/archive/BACKLOG_ARCHIVE.md`), preventing attention dilution while retaining 100% of historical milestones.
@@ -10,7 +13,7 @@
 > - **Telegram `/compact` Command**: One-touch memory compaction and pruning command reporting live telemetry (archived tasks, hot memory tokens, total disk persistence).
 > - **Mid-Flight Steering (`/steer`)**: Immediate course-correction command that cleanly halts active turns, captures progress context, and restarts execution along new parameters without race conditions.
 > - **Zero Status Spam (In-Place Status Editing)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter.
-> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, and gateway dispatch (48 passing unit/integration tests).
+> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, chat quoting, and gateway dispatch (62 passing unit/integration tests).
 
 ---
 
@@ -90,15 +93,22 @@ flowchart TD
   - `/queue` — View active task status and all pending queued messages.
   - `/cancel` — Instantly abort active execution and flush the task queue.
 
-### 6. Asynchronous Task Monitoring (`task_watcher`)
+### 6. Targeted Telegram Message Quoting & Contextual Reply Awareness
+- **Visual Threading (Outbound)**: Responses and intermediate status messages pass `reply_to_message_id` with `allow_sending_without_reply=True`, rendering clean visual quote connections directly back to originating user prompts.
+- **Inbound Context Injection**: Swiping or replying to previous messages automatically extracts sender and message preview (`[Replying to message from <Sender>: "<preview>"]`), seamlessly injecting context into the prompt.
+- **Full Media Quoting Support**: Handles replies quoting text, photos, documents, voice notes, audio files, videos, stickers (with emoji), polls, shared locations, and contacts.
+- **Zero-Drop Secondary Fallback**: If Telegram API rejects reply targeting on both Markdown and plain-text attempts, the gateway automatically strips reply parameters and sends directly to guarantee zero lost responses.
+- **Command Awareness**: Directives like `/btw` and `/steer` maintain quoted message context when executed as replies.
+
+### 7. Asynchronous Task Monitoring (`task_watcher`)
 - **Zero Premature Exits**: Strictly prevents abandoning running builds or operations with premature "running in background" responses.
 - **Active Verification**: Follows background tasks through completion via process monitoring and artifact validation.
 
-### 7. Zero Status Spam (In-Place Message Editing)
+### 8. Zero Status Spam (In-Place Message Editing)
 - **Fluid Telegram UI**: Intermediate tool steps dynamically mutate the current message bubble rather than creating duplicate bubbles in Telegram.
 - **Resilient Fallback**: Gracefully falls back to new messages if Telegram API edit limits or deletions occur.
 
-### 8. Tiered Quality Memory & Context Hygiene (`/compact`)
+### 9. Tiered Quality Memory & Context Hygiene (`/compact`)
 - **Hot Working Context (In-Prompt)**: Dynamic hot memory keeps prompt tokens lean (~2k tokens) by capping resolved milestones to the 4–5 most recent items while retaining 100% of active tasks `[ ]`.
 - **Warm Permanent Archive (On-Disk)**: Older completed tasks and multiline verification logs are moved to `data/memory/archive/BACKLOG_ARCHIVE.md`, preserving deep historical records off-prompt for on-demand tool inspection.
 - **Dynamic Archival Indicators**: If older tasks are archived, prompt context displays a clean pointer (e.g. `- *(+N older completed tasks archived in data/memory/archive/BACKLOG_ARCHIVE.md)*`).
@@ -107,7 +117,7 @@ flowchart TD
   - `/memory` — Inspect all modular memory files and current token footprint.
   - `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
-### 9. Deliberate Cadence & Rigorous Dual Verification
+### 10. Deliberate Cadence & Rigorous Dual Verification
 
 - **Slow is Smooth, Smooth is Fast**: Rejects rushed, unverified code changes that create debugging debt.
 - **Dual Verification**: Every feature or procedure must pass both positive (happy path) and negative (error boundary and fallback) testing.
