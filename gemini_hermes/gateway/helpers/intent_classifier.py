@@ -1,7 +1,7 @@
 """
 Helper for intent classification of sidecar queries and messages.
 """
-from typing import Tuple
+from typing import Any, Optional, Tuple
 
 
 def classify_btw_intent(text: str) -> Tuple[str, str]:
@@ -58,3 +58,44 @@ def classify_btw_intent(text: str) -> Tuple[str, str]:
 
     # Default fallback: treat as task queue
     return ("task", raw)
+
+
+async def classify_btw_intent_smart(
+    text: str,
+    jev_adapter: Optional[Any] = None,
+    timeout: Optional[float] = None,
+) -> Tuple[str, str]:
+    """
+    Smart /btw classifier.
+    1. Checks deterministic explicit prefix overrides in 0ms.
+    2. If Jev is available (start-jev world), queries Jev's Choice primitive.
+    3. If Jev times out (>1.0s), errors, or confidence < 0.85, falls back to pure heuristics.
+    """
+    raw = text.strip()
+    lower = raw.lower()
+
+    # 1. Deterministic explicit prefix overrides
+    if lower.startswith("?") or lower.startswith("q:") or lower.startswith("ask:") or lower.startswith("query:"):
+        for prefix in ("?", "q:", "ask:", "query:"):
+            if lower.startswith(prefix):
+                clean = raw[len(prefix):].strip()
+                return ("question", clean or raw)
+    if lower.startswith(("queue:", "task:", "todo:", "do:", "later:")):
+        for prefix in ("queue:", "task:", "todo:", "do:", "later:"):
+            if lower.startswith(prefix):
+                clean = raw[len(prefix):].strip()
+                return ("task", clean or raw)
+
+    # 2. Jev AI System-One classification if adapter is provided and available
+    if jev_adapter and getattr(jev_adapter, "is_available", False):
+        try:
+            res = await jev_adapter.classify_btw(raw, timeout=timeout or 3.0)
+            if res:
+                intent, _conf = res
+                return (intent, raw)
+        except Exception:
+            pass  # Fall through to pure heuristic fallback
+
+    # 3. Fallback to standard deterministic / heuristic classification
+    return classify_btw_intent(text)
+

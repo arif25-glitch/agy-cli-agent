@@ -306,11 +306,16 @@ def release_pid_lock():
         pass
 
 
-async def start_bot():
+async def start_bot(jev: bool = False):
     if not config.bot_token:
         print("❌ Error: TELEGRAM_BOT_TOKEN is not set.")
         print("Please run setup first: python3 -m gemini_hermes.cli setup")
         sys.exit(1)
+
+    if jev or os.environ.get("JEV_DYNAMIC_EFFORT", "").lower() in ("true", "1", "yes"):
+        config.jev_enabled = True
+        config.jev_dynamic_effort = True
+        print("⚡ Jev AI System-One Dynamic Reasoning Effort Selector: ENABLED")
 
     if not acquire_pid_lock():
         sys.exit(1)
@@ -370,7 +375,12 @@ def main():
     parser = argparse.ArgumentParser(description="Gemini-Hermes AI Agent Runner")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    subparsers.add_parser("start", help="Start the Gemini-Hermes Telegram Gateway")
+    start_parser = subparsers.add_parser("start", help="Start the Gemini-Hermes Telegram Gateway")
+    start_parser.add_argument(
+        "--jev",
+        action="store_true",
+        help="Enable Jev AI System-One dynamic reasoning effort selector",
+    )
     subparsers.add_parser("setup", help="Run interactive setup wizard")
     subparsers.add_parser("config", help="Configure TypeSafe AI (Jev) API key & decision settings")
     subparsers.add_parser("test", help="Run diagnostic health checks")
@@ -401,7 +411,7 @@ def main():
     elif cmd == "memory":
         run_memory_cli(args)
     elif cmd == "start":
-        asyncio.run(start_bot())
+        asyncio.run(start_bot(jev=getattr(args, "jev", False)))
     else:
         parser.print_help()
 

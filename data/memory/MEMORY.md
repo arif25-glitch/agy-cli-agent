@@ -18,6 +18,7 @@
 - Dual-Mode `/btw` Sidecar: When handling mid-task side interactions, classify input into ephemeral queries vs. queued directives. Answer questions (live status, technical, general, absurd) concurrently with zero transcript pollution; enqueue action directives into sequential task queue.
 - Mid-Flight Steering (`/steer`): Provide instant course correction. If a task is executing, immediately halt the active turn, capture prior progress context, update status in-place (`⏸️ Superseded by /steer`), and launch a redirected turn within the same conversation session without race conditions or premature queue firing. If idle, apply the directive as immediate top-priority guidance.
 - Automatic Chat Queueing ("Zero Message Drop"): Incoming user messages and attachments sent without slash commands during active execution are automatically enqueued into a sequential FIFO queue (capacity limit 10), acknowledged with real-time queue position, and sequentially drained upon task completion without message loss or race conditions.
+- Strict 2-World Architecture (Pure Core vs Jev Accelerator): All Jev AI capabilities reside exclusively inside `gemini_hermes/jev/`. Core `./run.sh start` remains 100% pure and independent (deterministic regex/keyword heuristics for `/btw`, zero external SDK calls). Accelerated `./run.sh start-jev` plugs in `JevAdapter` for dynamic effort and smart sidecar classification with automatic graceful fallback.
 
 
 

@@ -78,6 +78,15 @@ class Config(BaseModel):
     jev_confidence_threshold: float = Field(
         default_factory=lambda: float(os.environ.get("JEV_CONFIDENCE_THRESHOLD", "0.85"))
     )
+    jev_dynamic_effort: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_DYNAMIC_EFFORT", "false").lower() in ("true", "1", "yes")
+    )
+    jev_timeout: float = Field(
+        default_factory=lambda: float(os.environ.get("JEV_TIMEOUT", "3.0"))
+    )
+    jev_fast_path: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_FAST_PATH", "true").lower() in ("true", "1", "yes")
+    )
 
     @property
     def has_typesafe(self) -> bool:

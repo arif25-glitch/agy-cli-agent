@@ -30,8 +30,15 @@ class AgyForwarder:
             else config.dangerously_skip_permissions
         )
 
-    def _build_command(self, prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None) -> list:
+    def _build_command(
+        self,
+        prompt: str,
+        conversation_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+        effort: Optional[str] = None,
+    ) -> list:
         total_timeout = int(timeout or getattr(config, "forwarder_timeout", 900.0))
+        chosen_effort = effort or self.reasoning_effort
         cmd = [
             self.agy_bin,
             "-p",
@@ -39,7 +46,7 @@ class AgyForwarder:
             "--output-format",
             "stream-json",
             "--effort",
-            self.reasoning_effort,
+            chosen_effort,
             "--print-timeout",
             f"{total_timeout}s",
         ]
@@ -110,11 +117,16 @@ class AgyForwarder:
             return {"ok": False, "agy_bin": self.agy_bin, "error": str(e)}
 
     async def forward_stream(
-        self, prompt: str, conversation_id: Optional[str] = None, timeout: Optional[float] = None
+        self,
+        prompt: str,
+        conversation_id: Optional[str] = None,
+        timeout: Optional[float] = None,
+        effort: Optional[str] = None,
     ) -> AsyncGenerator[Union[TokenDelta, ThinkingDelta, ToolExecutionUpdate, ForwarderResult], None]:
         max_total_timeout = timeout or getattr(config, "forwarder_timeout", 900.0)
-        cmd = self._build_command(prompt, conversation_id, timeout=max_total_timeout)
-        logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id}, timeout={max_total_timeout}s)...")
+        cmd = self._build_command(prompt, conversation_id, timeout=max_total_timeout, effort=effort)
+        chosen_effort = effort or self.reasoning_effort
+        logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id}, effort={chosen_effort}, timeout={max_total_timeout}s)...")
 
         inactivity_timeout = getattr(config, "inactivity_timeout", 300.0)
         start_time = asyncio.get_event_loop().time()

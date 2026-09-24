@@ -1,9 +1,7 @@
 """
-Jev AI (TypeSafe AI) System-One reflex service.
-Provides fast, type-safe decision primitives (Choice, Score, Noul) with strict timeout guards
-and graceful fallbacks. 100% optional and decoupled from core bot execution.
+TypeSafe AI (Jev) System-One reflex client wrapper and primitives.
+Encapsulates low-level SDK communication, error handling, and timeout guards.
 """
-
 import asyncio
 from dataclasses import dataclass, field
 import logging
@@ -12,7 +10,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from gemini_hermes.config import Config, config as default_config
 
-logger = logging.getLogger("gemini-hermes.services.jev")
+logger = logging.getLogger("gemini-hermes.jev.client")
 
 try:
     from typesafe_sdk import AsyncTypeSafeClient, Choice, Score, Noul
@@ -46,7 +44,7 @@ class JevReflexDecision:
         return self.intent_confidence >= 0.80
 
 
-class JevService:
+class JevClient:
     """
     Client wrapper for TypeSafe AI's Jev model.
     Encapsulates asynchronous calls, timeout enforcement, exception handling, and
@@ -157,98 +155,6 @@ class JevService:
             )
             return None
 
-    async def classify_intent(
-        self,
-        text: str,
-        instructions: str = "Classify the user intent",
-        criteria: Optional[Dict[str, str]] = None,
-        timeout: Optional[float] = None,
-    ) -> Optional[Tuple[str, float]]:
-        """
-        Fast helper for single-question intent classification.
-        Returns (choice_label, confidence) or None.
-        """
-        if not self.is_available or not Choice:
-            return None
-
-        clean_text = text.strip() if text else ""
-        if not clean_text:
-            return None
-
-        default_criteria = criteria or {
-            "casual": "Casual chat, greetings, or general non-technical talk",
-            "coding": "Software engineering, debugging, code writing, or architecture",
-            "command": "Commands, configuration, or administrative directives",
-        }
-
-        q = {
-            "intent": Choice(
-                instructions=instructions,
-                criteria=default_criteria,
-            )
-        }
-
-        client = self.get_client()
-        if client is None:
-            return None
-
-        effective_timeout = timeout or self.default_timeout
-        try:
-            res = await asyncio.wait_for(
-                client.system_one(state=clean_text, questions=q, timeout=effective_timeout),
-                timeout=effective_timeout,
-            )
-            answers = getattr(res, "answers", res)
-            if isinstance(answers, dict) and "intent" in answers:
-                ans = answers["intent"]
-                choice = getattr(ans, "choice", None)
-                conf = getattr(ans, "confidence", 0.0)
-                if choice is not None:
-                    return str(choice), float(conf)
-            return None
-        except Exception as e:
-            logger.debug("Jev classify_intent failed: %s", e)
-            return None
-
-    async def evaluate_binary(
-        self,
-        text: str,
-        question: str,
-        timeout: Optional[float] = None,
-    ) -> Optional[float]:
-        """
-        Fast helper for single-question binary probability (Noul).
-        Returns probability of 'yes' (0.0 to 1.0) or None.
-        """
-        if not self.is_available or not Noul:
-            return None
-
-        clean_text = text.strip() if text else ""
-        if not clean_text:
-            return None
-
-        q = {"binary_q": Noul(instructions=question)}
-        client = self.get_client()
-        if client is None:
-            return None
-
-        effective_timeout = timeout or self.default_timeout
-        try:
-            res = await asyncio.wait_for(
-                client.system_one(state=clean_text, questions=q, timeout=effective_timeout),
-                timeout=effective_timeout,
-            )
-            answers = getattr(res, "answers", res)
-            if isinstance(answers, dict) and "binary_q" in answers:
-                ans = answers["binary_q"]
-                val = getattr(ans, "noul", None)
-                if val is not None:
-                    return float(val)
-            return None
-        except Exception as e:
-            logger.debug("Jev evaluate_binary failed: %s", e)
-            return None
-
     def _build_default_reflex_questions(self) -> Dict[str, Any]:
         """Construct standard 3-primitive question set for reflex decision."""
         if not HAS_TYPESAFE_SDK:
@@ -311,32 +217,3 @@ class JevService:
                 decision.needs_deep_reasoning = prob >= 0.5
 
         return decision
-
-    async def select_reasoning_effort(
-        self,
-        text: str,
-        default_effort: str = "medium",
-        timeout: Optional[float] = None,
-    ) -> Tuple[str, Optional[JevReflexDecision]]:
-        """
-        Dynamically determine reasoning effort ('low' | 'medium' | 'high') based on Jev reflex evaluation.
-        Falls back to default_effort gracefully on timeout, error, or low confidence.
-        """
-        if not self.is_available:
-            return default_effort, None
-
-        decision = await self.evaluate_reflex(text, timeout=timeout)
-        if decision is None or decision.complexity_score is None:
-            return default_effort, None
-
-        # Dynamic reasoning effort thresholds:
-        # 1. Low: Trivial cognitive complexity (< 0.6) and does not need deep reasoning tools
-        if decision.complexity_score < 0.6 and not decision.needs_deep_reasoning:
-            return "low", decision
-
-        # 2. High: High complexity (>= 1.5) OR strong certainty of deep reasoning (prob >= 0.85)
-        if decision.complexity_score >= 1.5 or (decision.needs_deep_reasoning and decision.reasoning_prob >= 0.85):
-            return "high", decision
-
-        # 3. Medium: Standard balanced execution
-        return "medium", decision

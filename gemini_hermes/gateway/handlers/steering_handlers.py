@@ -94,7 +94,10 @@ async def handle_btw(bot: Any, chat_id: int, user_id: int, text: str, message_id
         )
         return
 
-    intent, clean_query = bot._classify_btw_intent(query)
+    if hasattr(bot, "_classify_btw_intent_async"):
+        intent, clean_query = await bot._classify_btw_intent_async(query)
+    else:
+        intent, clean_query = bot._classify_btw_intent(query)
     is_running = chat_id in bot._active_tasks and not bot._active_tasks[chat_id].done()
 
     if not is_running:

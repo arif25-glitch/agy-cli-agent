@@ -49,12 +49,50 @@ class ExecutionRunner:
         sess = bot.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
 
-        # Build prompt with Hermes cognitive persona, memory, skills, and project index
+        # Determine reasoning effort & fast-path eligibility (dynamic via Jev if enabled, else default)
+        selected_effort = config.reasoning_effort
+        is_fast_path = False
+        effort_label = ""
+        if getattr(config, "jev_enabled", False) and getattr(config, "jev_dynamic_effort", False):
+            jev_adapter = getattr(bot, "jev_adapter", None) or getattr(bot, "jev_service", None)
+            if jev_adapter and getattr(jev_adapter, "is_available", False):
+                try:
+                    selected_effort, decision = await jev_adapter.select_reasoning_effort(
+                        user_text,
+                        default_effort=config.reasoning_effort,
+                        timeout=getattr(config, "jev_timeout", 3.0),
+                    )
+                    if decision:
+                        # Check fast-path eligibility: low effort, casual chat intent, no deep reasoning/tools
+                        if (
+                            getattr(config, "jev_fast_path", True)
+                            and selected_effort == "low"
+                            and getattr(decision, "intent", "") in ("casual_chat", "smalltalk", None)
+                            and not getattr(decision, "needs_deep_reasoning", False)
+                        ):
+                            is_fast_path = True
+                            effort_label = " (fast reflex)"
+                            logger.info(
+                                f"Jev fast-path conversational context selected for chat_id={chat_id} "
+                                f"(latency={decision.latency_ms:.1f}ms)"
+                            )
+                        else:
+                            effort_label = f" ({selected_effort} effort)"
+                            logger.info(
+                                f"Jev dynamic effort selected: '{selected_effort}' for chat_id={chat_id} "
+                                f"(complexity={decision.complexity_score:.2f}, "
+                                f"deep_reasoning={decision.needs_deep_reasoning}, latency={decision.latency_ms:.1f}ms)"
+                            )
+                except Exception as e:
+                    logger.warning(f"Jev dynamic effort evaluation failed: {e}. Using default '{selected_effort}'")
+
+        # Build prompt with Hermes cognitive persona (compact fast-path or full engineering context)
         system_prompt = build_system_prompt(
             bot.memory_store,
             bot.skill_manager,
             project_manager=bot.project_manager,
             current_chat_id=chat_id,
+            fast_path=is_fast_path,
         )
         full_prompt = (
             f"{system_prompt}\n\n"
@@ -113,9 +151,10 @@ class ExecutionRunner:
         tool_heartbeat_task = asyncio.create_task(_tool_heartbeat())
 
         if config.stream_updates:
+            status_text = f"💭 *Gemini-Hermes is thinking{effort_label}...*"
             status_message_ref[0] = await bot.send_message(
                 chat_id,
-                "💭 *Gemini-Hermes is thinking...*",
+                status_text,
                 reply_to_message_id=reply_to_message_id,
             )
 
@@ -127,7 +166,12 @@ class ExecutionRunner:
         final_result: Optional[ForwarderResult] = None
 
         try:
-            async for event in bot.forwarder.forward_stream(full_prompt, conv_id):
+            try:
+                stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id, effort=selected_effort)
+            except TypeError:
+                stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id)
+
+            async for event in stream_gen:
                 if isinstance(event, TokenDelta):
                     tool_active_event.clear()
                     current_tool_start[0] = 0.0

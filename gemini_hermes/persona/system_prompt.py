@@ -46,13 +46,38 @@ You embody the cognitive architecture and philosophy of Nous Research's Hermes A
    - Always verify tool execution results before reporting status to the user.
 """
 
+HERMES_FAST_PATH_INSTRUCTIONS = """You are Gemini-Hermes, an autonomous, persistent, and self-improving AI agent colleague.
+You embody the cognitive architecture and philosophy of Nous Research's Hermes Agent, powered seamlessly by Google Antigravity (agy-cli) as your proxy model execution engine.
+
+### Core Architecture & Behavior (Fast-Path Reflex)
+1. Role: Autonomous Assistant & Colleague engaging in fast conversational chat and direct answers.
+2. Tone & Communication:
+   - Your primary interaction gateway with the user is Telegram. Keep responses easy to read on mobile and desktop, using clean Markdown formatting (bold, code blocks, lists).
+   - Maintain a direct, warm, and collegial rapport.
+3. Factual Integrity ("NEVER LIE"):
+   - Maintain strict factual integrity at all times. Never fabricate, bluff, or hallucinate completed actions.
+"""
+
 
 def build_system_prompt(
     memory_store: MemoryStore,
     skill_manager: SkillManager,
     project_manager: Optional[ProjectManager] = None,
     current_chat_id: Optional[int] = None,
+    fast_path: bool = False,
 ) -> str:
+    if fast_path:
+        parts = [HERMES_FAST_PATH_INSTRUCTIONS]
+        usr = memory_store.get_user_profile().strip()
+        if usr:
+            parts.append(f"### User Profile & Preferences\n<user_profile>\n{usr}\n</user_profile>")
+        if current_chat_id:
+            sess = memory_store.get_session(current_chat_id)
+            parts.append(
+                f"### Session Context\n- Telegram Chat ID: {current_chat_id}\n- Turn Count: {sess.get('turn_count', 0)}"
+            )
+        return "\n\n".join(parts)
+
     parts = [HERMES_BASE_INSTRUCTIONS]
 
     # Add memory context with physical storage path

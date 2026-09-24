@@ -14,10 +14,12 @@ from gemini_hermes.memory.store import MemoryStore
 from gemini_hermes.skills.manager import SkillManager
 from gemini_hermes.projects.manager import ProjectManager
 from gemini_hermes.brain.agy_forwarder import AgyForwarder
+from gemini_hermes.services.jev_service import JevService
+from gemini_hermes.jev.adapter import JevAdapter
 from gemini_hermes.gateway.models import QueuedTask
 from gemini_hermes.gateway.services.telegram_client import TelegramClient
 from gemini_hermes.gateway.helpers.reply_parser import extract_reply_context
-from gemini_hermes.gateway.helpers.intent_classifier import classify_btw_intent
+from gemini_hermes.gateway.helpers.intent_classifier import classify_btw_intent, classify_btw_intent_smart
 from gemini_hermes.gateway.runner import ExecutionRunner
 from gemini_hermes.gateway.handlers import (
     handle_unauthorized,
@@ -66,6 +68,7 @@ class TelegramBot(TelegramClient):
         skill_manager: Optional[SkillManager] = None,
         project_manager: Optional[ProjectManager] = None,
         forwarder: Optional[AgyForwarder] = None,
+        jev_service: Optional[JevService] = None,
     ):
         token_val = token or config.bot_token
         super().__init__(token=token_val)
@@ -74,6 +77,9 @@ class TelegramBot(TelegramClient):
         self.skill_manager = skill_manager or SkillManager()
         self.project_manager = project_manager or ProjectManager()
         self.forwarder = forwarder or AgyForwarder()
+        self.jev_service = jev_service or JevService(cfg=config)
+        effective_jev_cfg = getattr(self.jev_service, "config", config)
+        self.jev_adapter = JevAdapter(cfg=effective_jev_cfg, client=getattr(self.jev_service, "_client", None))
 
         self.media_dir = os.path.join(config.workspace_dir, "data", "media")
         os.makedirs(self.media_dir, exist_ok=True)
@@ -155,7 +161,12 @@ class TelegramBot(TelegramClient):
     # Intent & Sidecar (/btw) & Steering (/steer)
     # -------------------------------------------------------------------------
     def _classify_btw_intent(self, text: str):
+        """Synchronous pure heuristic intent classification (zero external network)."""
         return classify_btw_intent(text)
+
+    async def _classify_btw_intent_async(self, text: str):
+        """Smart intent classification with Jev System-One support and heuristic fallback."""
+        return await classify_btw_intent_smart(text, jev_adapter=self.jev_adapter)
 
     async def _handle_btw_ephemeral_question(
         self,
