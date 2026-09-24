@@ -17,9 +17,10 @@ else
 fi
 
 show_help() {
-    echo "Usage: ./run.sh {setup|start|background|stop|status|logs|test}"
+    echo "Usage: ./run.sh {config|setup|start|background|stop|status|logs|test|memory}"
     echo ""
     echo "Commands:"
+    echo "  config      Configure TypeSafe AI (Jev) API key & decision settings"
     echo "  setup       Run interactive wizard to configure Bot Token & User ID"
     echo "  start       Start Gemini-Hermes bot in the foreground"
     echo "  background  Start Gemini-Hermes bot in background daemon mode"
@@ -32,6 +33,10 @@ show_help() {
 }
 
 case "$1" in
+    config)
+        shift
+        $PYTHON_BIN -m gemini_hermes.cli config "$@"
+        ;;
     memory)
         shift
         $PYTHON_BIN -m gemini_hermes.cli memory "$@"

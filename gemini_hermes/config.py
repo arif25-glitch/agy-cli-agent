@@ -31,7 +31,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.5.0"
+    app_version: str = "1.6.0"
 
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
@@ -63,6 +63,25 @@ class Config(BaseModel):
     status_notify_interval: float = Field(
         default_factory=lambda: float(os.environ.get("STATUS_NOTIFY_INTERVAL", "1.2"))
     )
+    typesafe_api_key: str = Field(
+        default_factory=lambda: os.environ.get("TYPESAFE_API_KEY", os.environ.get("JEV_API_KEY", ""))
+    )
+    typesafe_api_base: str = Field(
+        default_factory=lambda: os.environ.get("TYPESAFE_API_BASE", "https://api.typesafe.ai")
+    )
+    typesafe_model: str = Field(
+        default_factory=lambda: os.environ.get("TYPESAFE_MODEL", "jev-latest")
+    )
+    jev_enabled: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_ENABLED", "false").lower() in ("true", "1", "yes")
+    )
+    jev_confidence_threshold: float = Field(
+        default_factory=lambda: float(os.environ.get("JEV_CONFIDENCE_THRESHOLD", "0.85"))
+    )
+
+    @property
+    def has_typesafe(self) -> bool:
+        return bool(self.typesafe_api_key.strip() and self.jev_enabled)
 
     @property
     def is_configured(self) -> bool:

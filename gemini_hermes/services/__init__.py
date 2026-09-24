@@ -2,4 +2,6 @@
 Services layer for external platforms, models, and gateway integrations.
 """
 
-__all__ = []
+from gemini_hermes.services.jev_service import JevService, JevReflexDecision
+
+__all__ = ["JevService", "JevReflexDecision"]

@@ -97,6 +97,13 @@ STREAM_EDIT_INTERVAL={config.stream_edit_interval}
 WORKSPACE_DIR={config.workspace_dir}
 DANGEROUSLY_SKIP_PERMISSIONS={str(config.dangerously_skip_permissions).lower()}
 """
+    if config.typesafe_api_key:
+        env_content += f"""TYPESAFE_API_KEY={config.typesafe_api_key}
+TYPESAFE_MODEL={config.typesafe_model}
+TYPESAFE_API_BASE={config.typesafe_api_base}
+JEV_ENABLED={str(config.jev_enabled).lower()}
+JEV_CONFIDENCE_THRESHOLD={config.jev_confidence_threshold}
+"""
     env_file = BASE_DIR / ".env"
     env_file.write_text(env_content, encoding="utf-8")
     print(f"\n✅ Configuration written successfully to {env_file}!")
@@ -104,6 +111,95 @@ DANGEROUSLY_SKIP_PERMISSIONS={str(config.dangerously_skip_permissions).lower()}
     print("  ./run.sh start")
     print("or:")
     print("  python3 -m gemini_hermes.cli start\n")
+
+
+def run_config():
+    print("=" * 60)
+    print("      TYPESAFE AI (JEV) CONFIGURATION WIZARD")
+    print("=" * 60)
+    print("Configure your TypeSafe AI (Jev) System-One decision engine.")
+    print("API keys can be retrieved from: https://console.typesafe.ai/keys\n")
+
+    current_key = config.typesafe_api_key or ""
+    current_model = config.typesafe_model or "jev-latest"
+    current_base = config.typesafe_api_base or "https://api.typesafe.ai"
+    current_enabled = "true" if config.jev_enabled else "false"
+    current_threshold = str(config.jev_confidence_threshold)
+
+    key_preview = f"[{current_key[:10]}...{current_key[-4:]}]" if len(current_key) > 14 else (f"[{current_key[:6]}...]" if current_key else "")
+
+    key_prompt = f"Enter your TypeSafe API Key {key_preview}: " if key_preview else "Enter your TypeSafe API Key (from console.typesafe.ai): "
+    key_input = input(key_prompt).strip()
+    typesafe_api_key = key_input if key_input else current_key
+
+    if not typesafe_api_key:
+        print("\n⚠️ Note: No TypeSafe API key provided. Jev decision engine will remain disabled.")
+        enable_prompt = f"Enable Jev AI decision engine? (y/N) [default: {current_enabled}]: "
+    else:
+        enable_prompt = f"Enable Jev AI decision engine? (Y/n) [default: y]: "
+
+    enable_input = input(enable_prompt).strip().lower()
+    if enable_input in ("y", "yes"):
+        jev_enabled = "true"
+    elif enable_input in ("n", "no"):
+        jev_enabled = "false"
+    else:
+        jev_enabled = "true" if typesafe_api_key else current_enabled
+
+    model_prompt = f"Enter TypeSafe model [{current_model}] (press Enter for default): "
+    model_input = input(model_prompt).strip()
+    typesafe_model = model_input if model_input else current_model
+
+    threshold_prompt = f"Enter confidence threshold (0.0 - 1.0) [{current_threshold}] (press Enter for default): "
+    threshold_input = input(threshold_prompt).strip()
+    try:
+        confidence_threshold = float(threshold_input) if threshold_input else float(current_threshold)
+        if not (0.0 <= confidence_threshold <= 1.0):
+            confidence_threshold = 0.85
+    except ValueError:
+        confidence_threshold = 0.85
+
+    # Read existing .env file lines safely
+    env_file = BASE_DIR / ".env"
+    existing_lines = []
+    existing_keys = set()
+    if env_file.exists():
+        with open(env_file, "r", encoding="utf-8") as f:
+            existing_lines = f.readlines()
+
+    new_values = {
+        "TYPESAFE_API_KEY": typesafe_api_key,
+        "TYPESAFE_MODEL": typesafe_model,
+        "TYPESAFE_API_BASE": current_base,
+        "JEV_ENABLED": jev_enabled,
+        "JEV_CONFIDENCE_THRESHOLD": str(confidence_threshold),
+    }
+
+    updated_lines = []
+    for line in existing_lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k, _ = stripped.split("=", 1)
+            k = k.strip()
+            if k in new_values:
+                updated_lines.append(f"{k}={new_values[k]}\n")
+                existing_keys.add(k)
+                continue
+        updated_lines.append(line)
+
+    for k, v in new_values.items():
+        if k not in existing_keys:
+            updated_lines.append(f"{k}={v}\n")
+
+    env_file.write_text("".join(updated_lines), encoding="utf-8")
+    print(f"\n✅ TypeSafe AI (Jev) configuration updated in {env_file}!")
+    print("=" * 60)
+    print("Configuration Summary:")
+    print(f"  • TypeSafe API Key: {'Configured (' + typesafe_api_key[:10] + '...)' if typesafe_api_key else 'None'}")
+    print(f"  • Jev Enabled: {jev_enabled}")
+    print(f"  • Model: {typesafe_model}")
+    print(f"  • Confidence Threshold: {confidence_threshold}")
+    print("=" * 60 + "\n")
 
 
 async def run_diagnostics():
@@ -159,6 +255,22 @@ async def run_diagnostics():
             print(f"   ✅ Allowed User IDs: {config.allowed_users or 'ALL (Open)'}")
         else:
             print("   ❌ Failed to connect to Telegram. Check token or internet.")
+
+    print("\n5. [OPTIONAL: TYPESAFE AI] Inspecting TypeSafe AI (Jev) Setup...")
+    try:
+        import typesafe_sdk
+        print(f"   ℹ️ typesafe-sdk library detected (v{typesafe_sdk.__version__})")
+        if config.typesafe_api_key and config.jev_enabled:
+            masked = config.typesafe_api_key[:10] + "..." + config.typesafe_api_key[-4:] if len(config.typesafe_api_key) > 14 else config.typesafe_api_key[:6] + "..."
+            print(f"   🟢 Enabled with key: {masked}")
+            print(f"   Model: {config.typesafe_model}")
+        elif config.typesafe_api_key:
+            print("   ⚪ Configured but JEV_ENABLED=false (Dormant).")
+        else:
+            print("   ⚪ Optional: No API key set. (Gemini-Hermes runs normally)")
+            print("      Run './run.sh config' if you want to configure TypeSafe AI.")
+    except ImportError:
+        print("   ⚪ Optional: typesafe-sdk is not installed. (Gemini-Hermes runs normally)")
 
     print("\nDiagnostics complete!\n")
 
@@ -260,6 +372,7 @@ def main():
 
     subparsers.add_parser("start", help="Start the Gemini-Hermes Telegram Gateway")
     subparsers.add_parser("setup", help="Run interactive setup wizard")
+    subparsers.add_parser("config", help="Configure TypeSafe AI (Jev) API key & decision settings")
     subparsers.add_parser("test", help="Run diagnostic health checks")
 
     mem_parser = subparsers.add_parser("memory", help="Inspect or update persistent memory files")
@@ -279,7 +392,9 @@ def main():
 
     cmd = args.command or "start"
 
-    if cmd == "setup":
+    if cmd == "config":
+        run_config()
+    elif cmd == "setup":
         asyncio.run(run_setup())
     elif cmd == "test":
         asyncio.run(run_diagnostics())

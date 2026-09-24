@@ -1,19 +1,16 @@
-# 🪐 Gemini-Hermes AI Agent `v1.5.2`
+# 🪐 Gemini-Hermes AI Agent `v1.6.0`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.5.2 Highlights:**
-> - **Targeted Telegram Message Quoting & Contextual Reply Awareness**: Full bi-directional reply targeting with Telegram visual quote headers (`reply_to_message_id` & `reply_parameters` with `allow_sending_without_reply=True`) and inbound contextual quoting across 9 media types (text, photo, document, voice, audio, video, sticker, poll, location, contact).
-> - **Secondary Zero-Drop Fallback**: If Telegram API rejects reply targeting on both Markdown and plain attempts (e.g. deleted message or server mismatch), the gateway automatically strips reply parameters and delivers directly to guarantee zero lost messages.
-> - **Command Reply Context Preservation**: Commands such as `/btw` and `/steer` maintain full quoted message context when invoked via message replies.
-> - **Automatic Chat Queueing ("Zero Message Drop")**: Natural multi-message conversational flow on Telegram without slash commands. All plain text messages, photos, and documents sent mid-flight are automatically enqueued into a sequential FIFO queue.
-> - **Capacity Protection Guard**: Hardened task queue with `max_queue_size = 10` capacity protection and instant `#1 in queue` position feedback.
-> - **Tiered Quality Memory Architecture**: Structured separation between fast in-prompt working context ("Hot Memory") and permanent on-disk archives ("Warm Memory" in `data/memory/archive/BACKLOG_ARCHIVE.md`), preventing attention dilution while retaining 100% of historical milestones.
-> - **Dynamic Hot Backlog Capping**: In-prompt working context automatically preserves 100% of active tasks `[ ]` while dynamically capping resolved items `[x]` to the 4–5 most recent entries with off-prompt archival pointers.
-> - **Telegram `/compact` Command**: One-touch memory compaction and pruning command reporting live telemetry (archived tasks, hot memory tokens, total disk persistence).
-> - **Mid-Flight Steering (`/steer`)**: Immediate course-correction command that cleanly halts active turns, captures progress context, and restarts execution along new parameters without race conditions.
-> - **Zero Status Spam (In-Place Status Editing)**: In-place dynamic editing of status messages across intermediate tool executions (`🔨 *Currently:* <action>`), eliminating notification clutter.
-> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, chat quoting, and gateway dispatch (62 passing unit/integration tests).
+> **Release v1.6.0 Highlights:**
+> - **TypeSafe AI (Jev) Foundation & Isolated Service Shell**: Standalone, decoupled reflex service shell ([`JevService`](file:///home/arif/agy-hermes/gemini_hermes/services/jev_service.py)) supporting fast System-One decision primitives (`Choice`, `Score`, `Noul`) with strict timeout guards and graceful fallbacks.
+> - **100% Optional / Zero-Crash Design**: Core bot dependencies stay ultra-lean (`requirements.txt`). Optional TypeSafe SDK dependencies are isolated in `requirements-jev.txt`. Bot never stalls or breaks if Jev is disabled or missing.
+> - **Interactive Configuration Wizard (`./run.sh config`)**: Safe interactive configuration wizard to inspect and configure Telegram, Antigravity, and TypeSafe AI keys without clobbering `.env`.
+> - **Modular Gateway Architecture**: Clean modular separation into `services/` (HTTP transport), `helpers/` (reply parsing & intent triage), `handlers/` (command dispatch), `models.py` (`QueuedTask`), and `runner.py` (`ExecutionRunner`).
+> - **Targeted Telegram Message Quoting & Reply Awareness**: Full bi-directional reply targeting with Telegram visual quote headers (`reply_to_message_id` & `reply_parameters`) and inbound contextual quoting across 9 media types.
+> - **Automatic Chat Queueing ("Zero Message Drop")**: Sequential FIFO execution queue with capacity protection (`max_queue_size = 10`) and real-time position feedback.
+> - **Tiered Quality Memory Architecture**: Dynamic hot in-prompt memory capping paired with permanent on-disk archives (`data/memory/archive/BACKLOG_ARCHIVE.md`) and `/compact` command.
+> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, chat quoting, modular gateway, and Jev service (**81 passing unit tests**).
 
 ---
 
@@ -182,11 +179,15 @@ Gemini-Hermes features 9 modular procedures conforming to the `agentskills.io` s
 
 Run the setup wizard:
 ```bash
-cd /gemini-hermes
 ./run.sh setup
 ```
 
-Or edit `/gemini-hermes/.env` directly:
+Or run the interactive configuration editor at any time:
+```bash
+./run.sh config
+```
+
+Or edit `.env` directly:
 ```env
 TELEGRAM_BOT_TOKEN=123456789:ABCdefGhIJKlmNoPQRsTUVwxyZ
 TELEGRAM_ALLOWED_USERS=12345678
@@ -194,11 +195,23 @@ AGY_BIN=/root/.local/bin/agy
 REASONING_EFFORT=medium
 STREAM_UPDATES=true
 STREAM_EDIT_INTERVAL=1.2
+
+# Optional TypeSafe AI (Jev) System-One reflex layer
+TYPESAFE_API_KEY=apik_...
+TYPESAFE_API_BASE=https://api.typesafe.ai
+TYPESAFE_MODEL=jev-latest
+JEV_ENABLED=false
+```
+
+*(Optional)* If you wish to use TypeSafe AI (Jev):
+```bash
+pip install -r requirements-jev.txt
+python3 scripts/test_typesafe_live.py
 ```
 
 ### Step 2: Test Diagnostics
 
-Run the comprehensive test suite to verify connectivity:
+Run the comprehensive test suite to verify connectivity and environment readiness:
 ```bash
 ./run.sh test
 ```
@@ -212,7 +225,7 @@ Run the comprehensive test suite to verify connectivity:
 - Live logs: `./run.sh logs`
 - Status: `./run.sh status`
 - Stop: `./run.sh stop`
-- Safe Restart: `bash /gemini-hermes/restart_bot.sh`
+- Safe Restart: `bash restart_bot.sh`
 
 **Interactive Foreground Mode:**
 ```bash
@@ -224,37 +237,49 @@ Run the comprehensive test suite to verify connectivity:
 ## 📂 Project Directory Structure
 
 ```
-/gemini-hermes/
+agy-hermes/
 ├── README.md                      # Comprehensive project documentation
 ├── CHANGELOG.md                   # Semantic version history and release logs
-├── requirements.txt               # Python dependencies
-├── run.sh                         # CLI service management script
+├── requirements.txt               # Core Python dependencies (lean & zero-dependency storage)
+├── requirements-jev.txt           # Optional TypeSafe AI (Jev) dependencies
+├── run.sh                         # CLI service management script (setup, config, test, start)
 ├── restart_bot.sh                 # Graceful lifecycle-aware daemon reloader
 ├── .env.example                   # Environment configuration template
+├── scripts/
+│   └── test_typesafe_live.py      # Standalone live TypeSafe AI primitive test harness
 ├── gemini_hermes/
-│   ├── __init__.py                # Package version definition (v1.4.1)
-
-│   ├── config.py                  # Settings loader & path constants
-│   ├── cli.py                     # CLI commands (start, setup, test, status)
+│   ├── __init__.py                # Package definition
+│   ├── config.py                  # Settings loader & path constants (v1.6.0)
+│   ├── cli.py                     # CLI commands (start, setup, config, test, status)
 │   ├── brain/
 │   │   ├── agy_forwarder.py       # Proxy forwarder to Antigravity CLI
 │   │   └── stream_parser.py       # NDJSON stream and tool event parser
+│   ├── services/
+│   │   └── jev_service.py         # Optional TypeSafe AI Jev System-One service shell
 │   ├── projects/
 │   │   ├── __init__.py
 │   │   └── manager.py             # Project state indexing & task tracking
 │   ├── memory/
 │   │   ├── store.py               # Memory persistence and session manager
+│   │   ├── archiver.py            # Tiered memory archiver (hot vs. warm)
 │   │   └── templates.py           # Default memory blueprints
 │   ├── skills/
 │   │   ├── manager.py             # Modular skill discovery and parser
-│   │   └── builtin/               # 8 Built-in procedural skills
+│   │   └── builtin/               # Built-in procedural skills
 │   ├── persona/
 │   │   └── system_prompt.py       # Cognitive depth & prompt builder
 │   └── gateway/
-│       ├── telegram_bot.py        # Gateway bot (polling, queues, /btw, status push)
+│       ├── telegram_bot.py        # Gateway bot facade
+│       ├── runner.py              # Turn lifecycle & streaming execution runner
+│       ├── models.py              # Gateway data models (QueuedTask)
+│       ├── handlers/              # Modular command & lifecycle handlers
+│       ├── helpers/               # Context parsing & intent classification
+│       ├── services/              # Telegram HTTP transport client
 │       └── formatter.py           # Telegram Markdown formatting & sanitizers
+├── tests/                         # Dual verification test suites (81 tests)
 └── data/
     ├── memory/                    # MEMORY.md, USER.md, BACKLOG.md, REFERENCES.md
+    │   └── archive/               # Warm memory archives (BACKLOG_ARCHIVE.md)
     ├── projects/                  # projects.json (bookmarked projects)
     ├── sessions/                  # sessions.json (chat threads & metrics)
     ├── media/                     # Ingested Telegram photos and documents

@@ -5,6 +5,23 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-09-24
+
+### Added
+- **Modular Gateway Architecture Refactoring**:
+  * Deconstructed monolithic `telegram_bot.py` into clean, modern architectural layers: `services/telegram_client.py` (API transport), `helpers/` (`reply_parser.py`, `intent_classifier.py`), `handlers/` (modular command & lifecycle handlers), `models.py` (`QueuedTask`), and `runner.py` (`ExecutionRunner`). Preserved 100% backward compatibility for all existing scripts and tests.
+- **TypeSafe AI (Jev) Foundation & Isolated System-One Shell**:
+  * **100% Optional Architecture**: Core Gemini-Hermes operates independently with zero required TypeSafe dependencies. Kept core `requirements.txt` ultra-lean and provided `requirements-jev.txt` for optional Jev reflex capabilities (`typesafe-sdk>=0.7.1`).
+  * **Decoupled Service Shell (`JevService`)**: Created `gemini_hermes/services/jev_service.py` with strict timeout guards (`asyncio.wait_for`, default 5.0s) and silent fallback to standard execution if TypeSafe is down, slow, or disabled.
+  * **Structured Reflex Models**: Added `JevReflexDecision` dataclass capturing Choice, Score, and Noul outputs (`intent`, `complexity_score`, `needs_deep_reasoning`, `latency_ms`).
+  * **Interactive Configuration Wizard (`./run.sh config`)**: Added dedicated CLI configuration command and wizard to easily configure `TYPESAFE_API_KEY`, `TYPESAFE_MODEL`, `TYPESAFE_API_BASE`, and `JEV_ENABLED` without clobbering existing `.env` values.
+  * **System Diagnostics Integration**: Added TypeSafe AI readiness check to `./run.sh test` (Section 5) inspecting credentials and SDK installation without invoking paid tokens.
+  * **Live Verification Harness**: Added `scripts/test_typesafe_live.py` for testing connectivity and primitive responses against live TypeSafe servers.
+- **Dual Verification Test Suite Expansion**:
+  * Added 8 unit tests in `tests/test_modular_gateway.py`.
+  * Added 11 unit tests in `tests/test_jev_service.py` covering positive and negative/resilience paths.
+  * Total project tests increased from 62 to **81 passing unit tests** (100% pass rate).
+
 ## [1.5.2] - 2026-09-23
 
 ### Added
