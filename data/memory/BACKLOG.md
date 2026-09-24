@@ -2,6 +2,35 @@
 
 ## Active Tasks
 
+- [x] Dual Verification completed for Jev AI System-One Decision Engine & Subsystem Modularization:
+  * Phase 1 (Goal & Boundary): Architect Jev AI (TypeSafe AI) System-One decision integration for fast, type-safe query routing with calibrated confidence scoring, alongside memory subsystem modularization (`SessionStore`, `BacklogArchiver`).
+  * Phase 2 (Architecture & Resilience):
+    - Jev Types (`brain/jev_types.py`): Typed `JevCategory` enum, `JevDecisionOutcome` contract with calibrated confidence, parameters, and System-Two fallback detection.
+    - Jev Service Client (`services/jev_client.py`): Dual-mode client supporting live TypeSafe AI API endpoints with graceful offline sandbox heuristic mode for immediate testability.
+    - Telegram Gateway Command (`/jev` in `handlers/system_handlers.py`): Allows users to query the decision model, displaying category, confidence, and routing tier.
+    - Subsystem Modularization (`memory/session_store.py` & `memory/archiver.py`): Separated session persistence and task archiving from `MemoryStore`.
+  * Phase 3 (Incremental Draft): Implemented services, types, handlers, and config parameters (`JEV_API_KEY`, `JEV_API_BASE`, `JEV_CONFIDENCE_THRESHOLD`, `JEV_ENABLED`).
+  * Phase 4 (Dual Verification - 77 Passed Tests):
+    - Added 7 dedicated unit tests in `tests/test_jev_ai.py` (3 positive paths + 4 negative stress tests).
+    - 70 existing tests in `test_gemini_hermes.py` and `test_modular_gateway.py` continue to pass 100%.
+  * Phase 5 (Release & Remote Sync): Synced to branch `develop/jev` and pushed to remote origin.
+
+- [x] Dual Verification completed for Modular Gateway Architecture Refactoring:
+  * Phase 1 (Goal & Boundary): Deconstruct monolithic `telegram_bot.py` (>1,400 LOC) into clean, React/modern-style layers (services, helpers, handlers, models, execution runner) while preserving 100% backward compatibility for all existing tests and CLI scripts.
+  * Phase 2 (Architecture & Decomposition):
+    - Services (`services/telegram_client.py`): HTTP transport, API endpoints, message CRUD, file downloads.
+    - Helpers (`helpers/reply_parser.py`, `helpers/intent_classifier.py`): Inbound reply context extraction & intent classification.
+    - Handlers (`handlers/`): Command & lifecycle handlers (`system_handlers`, `memory_handlers`, `skill_handlers`, `project_handlers`, `queue_handlers`, `steering_handlers`).
+    - Models (`models.py`): `QueuedTask` metadata model.
+    - Runner (`runner.py`): `ExecutionRunner` encapsulating turn lifecycle, typing heartbeat, tool heartbeat, streaming updates, and queue progression.
+    - Gateway Facade (`telegram_bot.py`): Subclasses `TelegramClient` and coordinates handlers while maintaining exact attribute & method parity.
+  * Phase 3 (Incremental Draft): Implemented modular package hierarchy with clean imports and re-exports.
+  * Phase 4 (Dual Verification - 70 Passed Tests):
+    - Full regression run of existing 62 tests in `test_gemini_hermes.py` (100% passed).
+    - Added 8 dedicated unit tests in `test_modular_gateway.py` covering positive & negative paths for `QueuedTask`, `classify_btw_intent`, `extract_reply_context` (text, media, malformed payloads), and `TelegramClient` API transport.
+    - Verified live diagnostics via `gemini_hermes.cli test` against Telegram API and Antigravity forwarder.
+  * Phase 5 (Packaging & Memory Update): Synced physical memory and ready for Jev AI decision engine integration.
+
 - [x] Dual Verification completed for Telegram Targeted Quoting & Contextual Reply Awareness:
   * Phase 1 (Goal & Boundary): Support bi-directional Telegram message replying: outbound reply targeting (`reply_to_message_id`, `reply_parameters`) and inbound reply context extraction (`reply_to_message`).
   * Phase 2 (Architecture & Resilience): Dual Telegram API fallback (strips formatting, then reply params if message was deleted/rejected); comprehensive media extraction (photo, document, voice, audio, video, sticker, poll, location, contact); command context preservation (`/btw`, `/steer`); and queued task metadata continuity via `QueuedTask`.

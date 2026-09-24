@@ -1,3 +1,7 @@
+"""
+Telegram Gateway facade for Gemini-Hermes.
+Orchestrates client communications, message routing, queuing, and execution workflows.
+"""
 import os
 import asyncio
 import logging
@@ -9,37 +13,53 @@ from gemini_hermes.config import config
 from gemini_hermes.memory.store import MemoryStore
 from gemini_hermes.skills.manager import SkillManager
 from gemini_hermes.projects.manager import ProjectManager
-from gemini_hermes.persona.system_prompt import build_system_prompt
 from gemini_hermes.brain.agy_forwarder import AgyForwarder
-from gemini_hermes.brain.stream_parser import TokenDelta, ForwarderResult, ToolExecutionUpdate
-from gemini_hermes.gateway.formatter import (
-    format_hermes_output,
-    split_message,
-    humanize_error,
-    sanitize_streaming_markdown,
+from gemini_hermes.gateway.models import QueuedTask
+from gemini_hermes.gateway.services.telegram_client import TelegramClient
+from gemini_hermes.gateway.helpers.reply_parser import extract_reply_context
+from gemini_hermes.gateway.helpers.intent_classifier import classify_btw_intent
+from gemini_hermes.gateway.runner import ExecutionRunner
+from gemini_hermes.gateway.handlers import (
+    handle_unauthorized,
+    handle_start,
+    handle_help,
+    handle_status,
+    handle_exec,
+    handle_jev,
+    handle_memory,
+    handle_compact,
+    handle_memory_add,
+    handle_task_add,
+    handle_ref_add,
+    handle_memory_reset,
+    handle_skills,
+    handle_skill_detail,
+    handle_projects,
+    handle_project_detail,
+    handle_project_add,
+    handle_project_task,
+    enqueue_task,
+    run_queued_task,
+    handle_queue,
+    handle_cancel,
+    handle_reset,
+    handle_btw,
+    handle_btw_ephemeral_question,
+    handle_steer,
 )
 
 logger = logging.getLogger("gemini-hermes.telegram")
 
+# Re-export QueuedTask for backward-compatibility
+__all__ = ["QueuedTask", "TelegramBot"]
 
-class QueuedTask(str):
+
+class TelegramBot(TelegramClient):
     """
-    A string subclass that transparently carries metadata (such as originating
-    Telegram message_id and item_type) through task queues.
-    Inheriting from str ensures complete backwards-compatibility with string
-    comparisons, logging, formatting, and existing tests.
+    Main Gateway Controller for the Gemini-Hermes Telegram Bot.
+    Serves as the high-level facade coordinating modular services, handlers, and runners.
     """
-    message_id: Optional[int]
-    item_type: str
 
-    def __new__(cls, content: str, message_id: Optional[int] = None, item_type: str = "message"):
-        obj = super().__new__(cls, content)
-        obj.message_id = message_id
-        obj.item_type = item_type
-        return obj
-
-
-class TelegramBot:
     def __init__(
         self,
         token: Optional[str] = None,
@@ -48,15 +68,17 @@ class TelegramBot:
         project_manager: Optional[ProjectManager] = None,
         forwarder: Optional[AgyForwarder] = None,
     ):
-        self.token = token or config.bot_token
-        self.api_url = f"https://api.telegram.org/bot{self.token}"
+        token_val = token or config.bot_token
+        super().__init__(token=token_val)
+
         self.memory_store = memory_store or MemoryStore()
         self.skill_manager = skill_manager or SkillManager()
         self.project_manager = project_manager or ProjectManager()
         self.forwarder = forwarder or AgyForwarder()
+
         self.media_dir = os.path.join(config.workspace_dir, "data", "media")
         os.makedirs(self.media_dir, exist_ok=True)
-        self.client: Optional[httpx.AsyncClient] = None
+
         self.is_running = False
         self.last_update_id = 0
         self.bot_info: Dict[str, Any] = {}
@@ -65,466 +87,79 @@ class TelegramBot:
         self._task_queues: Dict[int, List[str]] = {}
         self.max_queue_size: int = 10
 
-    async def _api_call(self, method: str, json_data: Optional[Dict[str, Any]] = None, timeout: float = 35.0) -> Any:
-        if not self.client or self.client.is_closed:
-            self.client = httpx.AsyncClient(timeout=timeout)
-        url = f"{self.api_url}/{method}"
-        try:
-            resp = await self.client.post(url, json=json_data, timeout=timeout)
-            data = resp.json()
-            if not data.get("ok"):
-                logger.warning(f"Telegram API {method} returned not ok: {data}")
-            return data
-        except Exception as e:
-            logger.error(f"Telegram API request {method} error: {e}")
-            return {"ok": False, "error": str(e)}
-
     async def get_me(self) -> Dict[str, Any]:
-        res = await self._api_call("getMe")
-        if res.get("ok"):
-            self.bot_info = res.get("result", {})
-            return self.bot_info
-        return {}
+        res = await super().get_me()
+        if res:
+            self.bot_info = res
+        return res
 
-    async def get_file_path(self, file_id: str) -> Optional[str]:
-        res = await self._api_call("getFile", {"file_id": file_id})
-        if res.get("ok"):
-            return res["result"].get("file_path")
-        return None
-
-    async def download_file_to(self, file_path: str, dest_path: str) -> bool:
-        file_url = f"https://api.telegram.org/file/bot{self.token}/{file_path}"
-        try:
-            if not self.client or self.client.is_closed:
-                self.client = httpx.AsyncClient(timeout=60.0)
-            resp = await self.client.get(file_url, timeout=60.0)
-            if resp.status_code == 200:
-                os.makedirs(os.path.dirname(dest_path), exist_ok=True)
-                with open(dest_path, "wb") as f:
-                    f.write(resp.content)
-                return True
-            else:
-                logger.error(f"Download failed for {file_path}: status {resp.status_code}")
-        except Exception as e:
-            logger.error(f"Error downloading file {file_path}: {e}")
-        return False
-
-    async def send_message(
-        self,
-        chat_id: int,
-        text: str,
-        parse_mode: Optional[str] = "Markdown",
-        reply_to_message_id: Optional[int] = None,
-    ) -> Optional[int]:
-        payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
-        if reply_to_message_id:
-            payload["reply_to_message_id"] = reply_to_message_id
-            payload["allow_sending_without_reply"] = True
-            payload["reply_parameters"] = {
-                "message_id": reply_to_message_id,
-                "allow_sending_without_reply": True,
-            }
-        res = await self._api_call("sendMessage", payload)
-        if not res.get("ok"):
-            # Fallback 1: without markdown parsing if syntax error occurred
-            if parse_mode:
-                fallback_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
-                if reply_to_message_id:
-                    fallback_payload["reply_to_message_id"] = reply_to_message_id
-                    fallback_payload["allow_sending_without_reply"] = True
-                    fallback_payload["reply_parameters"] = {
-                        "message_id": reply_to_message_id,
-                        "allow_sending_without_reply": True,
-                    }
-                res = await self._api_call("sendMessage", fallback_payload)
-
-            # Fallback 2: if still failing and reply was targeted, send directly without reply parameters
-            # (protects against Telegram API rejecting invalid/deleted message reply references)
-            if not res.get("ok") and reply_to_message_id:
-                direct_payload: Dict[str, Any] = {"chat_id": chat_id, "text": text}
-                res = await self._api_call("sendMessage", direct_payload)
-
-        if res.get("ok"):
-            return res["result"]["message_id"]
-        return None
-
-    async def delete_message(self, chat_id: int, message_id: int) -> bool:
-        res = await self._api_call(
-            "deleteMessage",
-            {"chat_id": chat_id, "message_id": message_id},
-        )
-        return bool(res.get("ok"))
-
-    async def edit_message_text(
-        self, chat_id: int, message_id: int, text: str, parse_mode: Optional[str] = "Markdown"
-    ) -> bool:
-        payload: Dict[str, Any] = {
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-        }
-        if parse_mode:
-            payload["parse_mode"] = parse_mode
-        res = await self._api_call("editMessageText", payload)
-        if not res.get("ok"):
-            desc = res.get("description", "")
-            if "message is not modified" in desc:
-                return True
-            if parse_mode:
-                # Fallback without markdown
-                fallback_res = await self._api_call(
-                    "editMessageText",
-                    {
-                        "chat_id": chat_id,
-                        "message_id": message_id,
-                        "text": text,
-                    },
-                )
-                if not fallback_res.get("ok") and "message is not modified" in fallback_res.get("description", ""):
-                    return True
-                return bool(fallback_res.get("ok"))
-        return bool(res.get("ok"))
-
-    async def send_chat_action(self, chat_id: int, action: str = "typing"):
-        await self._api_call("sendChatAction", {"chat_id": chat_id, "action": action}, timeout=10.0)
-
+    # -------------------------------------------------------------------------
+    # Authentication & Access Control
+    # -------------------------------------------------------------------------
     def is_user_allowed(self, user_id: int) -> bool:
         if not config.allowed_users:
             return True
         return user_id in config.allowed_users
 
     async def handle_unauthorized(self, chat_id: int, user_id: int):
-        msg = (
-            f"⛔ *Access Restricted*\n\n"
-            f"Your Telegram User ID: `{user_id}`\n"
-            f"Chat ID: `{chat_id}`\n\n"
-            f"To access Gemini-Hermes, add your User ID to `TELEGRAM_ALLOWED_USERS` in your `.env` configuration."
-        )
-        await self.send_message(chat_id, msg)
+        await handle_unauthorized(self, chat_id, user_id)
 
+    # -------------------------------------------------------------------------
+    # Command Handlers (Delegated to modular handlers)
+    # -------------------------------------------------------------------------
     async def handle_start(self, chat_id: int, user_id: int):
-        skills_count = len(self.skill_manager.get_all_skills())
-        text = (
-            f"🤖 *Welcome to Gemini-Hermes (v{config.app_version})!*\n\n"
-            f"I am an autonomous, persistent AI agent colleague inspired by *Nous Research's Hermes*, "
-            f"powered by *Google Antigravity CLI (`agy`)* as my proxy model execution engine.\n\n"
-            f"⚙️ *Engine:* Antigravity CLI Proxy (`agy`)\n"
-            f"📦 *App Version:* `v{config.app_version}`\n"
-            f"🧠 *Reasoning Effort:* `{config.reasoning_effort}`\n"
-            f"💾 *Persistent Memory:* Active (`MEMORY.md` & `USER.md`)\n"
-            f"🛠️ *Skills Catalog:* `{skills_count}` active skills\n\n"
-            f"💡 *Commands:*\n"
-            f"• `/new` or `/reset` - Start a fresh conversation\n"
-            f"• `/status` - Check agent health and statistics\n"
-            f"• `/memory` - Inspect persistent memory modules (MEMORY, USER, BACKLOG, REFERENCES)\n"
-            f"• `/memory_add <text>` - Save a permanent fact or instruction\n"
-            f"• `/task_add <task>` - Add a task to the active backlog\n"
-            f"• `/ref_add <title> | <url>` - Save an external link or sheet reference\n"
-            f"• `/skills` - View all available modular skills\n"
-            f"• `/skill <name>` - View skill procedure details\n"
-            f"• `/exec <bash>` - Execute host shell command\n"
-            f"• `/help` - Show this guide\n\n"
-            f"Send me any question, project task, or instruction to begin!"
-        )
-        await self.send_message(chat_id, text)
+        await handle_start(self, chat_id, user_id)
 
     async def handle_help(self, chat_id: int):
-        text = (
-            f"📚 *Gemini-Hermes Command Reference:*\n\n"
-            f"• `/new` / `/reset` - Clears the current conversation thread and begins a fresh session.\n"
-            f"• `/status` - Shows active conversation ID, turns, token metrics, and engine status.\n"
-            f"• `/memory` - Displays all active persistent memory modules.\n"
-            f"• `/compact` - Archives older completed tasks to data/memory/archive/ and keeps prompt context sharp.\n"
-            f"• `/memory_add <note>` - Manually saves a new note to persistent operational memory.\n"
-            f"• `/task_add <task>` - Adds a task to the active backlog (`BACKLOG.md`).\n"
-            f"• `/ref_add <title> | <url>` - Saves an external link or sheet to references (`REFERENCES.md`).\n"
-            f"• `/memory_reset` - Resets persistent memory to default initial state.\n"
-            f"• `/skills` - Lists all modular procedural skills currently registered.\n"
-            f"• `/skill <name>` - Displays the exact instructions and metadata of a skill.\n"
-            f"• `/projects` - List all bookmarked projects and their state.\n"
-            f"• `/project <id>` - Inspect detailed state, tasks, and tech stack of a project.\n"
-            f"• `/project_add <name> <path>` - Bookmark a new active project into persistent state.\n"
-            f"• `/project_task <id> <task>` - Add a new task or milestone to a project.\n"
-            f"• `/btw <note/query>` - Ask a side question, steer, or queue a task while an operation is running.\n"
-            f"• `/steer <instruction>` - Immediately redirects or course-corrects the agent (mid-flight or idle).\n"
-            f"• `/queue` - View active task and pending /btw queue.\n"
-            f"• `/cancel` - Abort the active background task and clear the queue.\n"
-            f"• `/exec <command>` - Runs a shell command on the host machine and streams the output.\n"
-            f"• `/help` - Displays this menu.\n\n"
-            f"💬 *Natural Conversation:*\n"
-            f"You can also ask me directly to learn new skills, recall previous discussions, "
-            f"research topics, analyze complex problems, and run multi-step workflows."
-        )
-        await self.send_message(chat_id, text)
+        await handle_help(self, chat_id)
 
     async def handle_status(self, chat_id: int):
-        sess = self.memory_store.get_session(chat_id)
-        health = await self.forwarder.check_health()
-        status_symbol = "🟢 Online" if health.get("ok") else "🔴 Error"
-
-        text = (
-            f"📊 *Gemini-Hermes Status:*\n\n"
-            f"• *App Version:* `v{config.app_version}`\n"
-            f"• *Model Engine:* {status_symbol}\n"
-            f"• *Binary:* `{self.forwarder.agy_bin}`\n"
-            f"• *Reasoning Effort:* `{config.reasoning_effort}`\n"
-            f"• *Current Conversation ID:* `{sess.get('conversation_id') or 'None (Fresh Session)'}`\n"
-            f"• *Session Turns:* `{sess.get('turn_count', 0)}`\n"
-            f"• *Tokens Used:* ~{sess.get('total_input_tokens', 0) + sess.get('total_output_tokens', 0):,}\n"
-            f"• *Registered Skills:* `{len(self.skill_manager.get_all_skills())}`\n"
-            f"• *Indexed Projects:* `{len(self.project_manager.list_projects())}`\n"
-            f"• *Memory File:* `data/memory/MEMORY.md`"
-        )
-        await self.send_message(chat_id, text)
+        await handle_status(self, chat_id)
 
     async def handle_memory(self, chat_id: int):
-        mem = self.memory_store.get_long_term_memory().strip()
-        usr = self.memory_store.get_user_profile().strip()
-        backlog = self.memory_store.get_backlog().strip()
-        refs = self.memory_store.get_references().strip()
-
-        sections = []
-        if mem:
-            sections.append(f"🧠 *Operational Directives (`MEMORY.md`):*\n```markdown\n{mem[:800]}\n```")
-        if usr:
-            sections.append(f"👤 *User Profile (`USER.md`):*\n```markdown\n{usr[:800]}\n```")
-        if backlog:
-            sections.append(f"📋 *Task Backlog (`BACKLOG.md`):*\n```markdown\n{backlog[:800]}\n```")
-        if refs:
-            sections.append(f"🔗 *External References (`REFERENCES.md`):*\n```markdown\n{refs[:800]}\n```")
-
-        text = "\n\n".join(sections) if sections else "ℹ️ No memory files found."
-        await self.send_message(chat_id, text)
+        await handle_memory(self, chat_id)
 
     async def handle_compact(self, chat_id: int):
-        res = self.memory_store.archive_completed_backlog(keep_recent=5)
-        stats = self.memory_store.get_memory_stats()
-
-        if res.get("status") == "archived":
-            text = (
-                f"🧹 *Memory Compaction & Tiering Complete*\n\n"
-                f"• *Archived Completed Tasks:* `{res['archived_count']}` (migrated to warm archive)\n"
-                f"• *Recent Completed in Hot Context:* `{res['retained_count']}`\n"
-                f"• *Active Tasks Kept:* `{res['active_count']}`\n"
-                f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
-                f"• *Total Memory Preserved on Disk:* ~`{stats['total_tokens']:,}` tokens\n"
-                f"• *Archive Location:* `data/memory/archive/BACKLOG_ARCHIVE.md`"
-            )
-        else:
-            text = (
-                f"✨ *Memory is Already Compact & Sharp*\n\n"
-                f"• *Completed Tasks in Backlog:* `{res.get('retained_count', 0)}` (under threshold of 5)\n"
-                f"• *Active Tasks:* `{res.get('active_count', 0)}`\n"
-                f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
-                f"• *Archived Off-Prompt Tokens:* ~`{stats['archived_tokens']:,}` tokens\n"
-                f"No archiving was needed."
-            )
-        await self.send_message(chat_id, text)
+        await handle_compact(self, chat_id)
 
     async def handle_memory_add(self, chat_id: int, note: str):
-        if not note.strip():
-            await self.send_message(chat_id, "⚠️ Please provide text to save: `/memory_add <text>`")
-            return
-        self.memory_store.append_to_memory(note)
-        await self.send_message(chat_id, f"✅ Successfully saved to persistent memory:\n`{note.strip()}`")
-
+        await handle_memory_add(self, chat_id, note)
 
     async def handle_task_add(self, chat_id: int, task: str):
-        if not task.strip():
-            await self.send_message(chat_id, "⚠️ Please provide a task: `/task_add <description>`")
-            return
-        self.memory_store.append_to_backlog(task)
-        await self.send_message(chat_id, f"✅ Successfully added to Task Backlog (`BACKLOG.md`):\n`{task.strip()}`")
+        await handle_task_add(self, chat_id, task)
 
     async def handle_ref_add(self, chat_id: int, arg: str):
-        if not arg.strip() or "|" not in arg:
-            await self.send_message(chat_id, "⚠️ Please provide format: `/ref_add <title> | <url>`")
-            return
-        parts = arg.split("|", 1)
-        title = parts[0].strip()
-        url = parts[1].strip()
-        self.memory_store.append_to_references(title, url)
-        await self.send_message(chat_id, f"✅ Saved to References (`REFERENCES.md`):\n*{title}*: `{url}`")
+        await handle_ref_add(self, chat_id, arg)
 
     async def handle_skills(self, chat_id: int):
-        skills = self.skill_manager.get_all_skills()
-        if not skills:
-            await self.send_message(chat_id, "No skills registered yet.")
-            return
-
-        lines = ["🛠️ *Registered Hermes Skills:*\n"]
-        for s in skills.values():
-            tags = f" `[{', '.join(s.tags)}]`" if s.tags else ""
-            lines.append(f"• *{s.name}*{tags}\n  _{s.description}_")
-        lines.append("\nUse `/skill <name>` to view full instructions.")
-        await self.send_message(chat_id, "\n".join(lines))
+        await handle_skills(self, chat_id)
 
     async def handle_skill_detail(self, chat_id: int, skill_name: str):
-        skill = self.skill_manager.get_skill(skill_name.strip())
-        if not skill:
-            await self.send_message(chat_id, f"⚠️ Skill `{skill_name}` not found. Use `/skills` to list available.")
-            return
-
-        text = (
-            f"📖 *Skill:* `{skill.name}` (v{skill.version})\n"
-            f"*{skill.description}*\n\n"
-            f"```markdown\n{skill.instructions[:3500]}\n```"
-        )
-        await self.send_message(chat_id, text)
+        await handle_skill_detail(self, chat_id, skill_name)
 
     async def handle_projects(self, chat_id: int):
-        projects = self.project_manager.list_projects()
-        if not projects:
-            await self.send_message(
-                chat_id,
-                "📁 No projects currently indexed. Use `/project_add <name> <path>` to bookmark one."
-            )
-            return
-
-        lines = ["📁 *Indexed Projects (Persistent State):*\n"]
-        for p in projects:
-            lines.append(p.to_summary() + "\n")
-        lines.append("Use `/project <id>` to inspect detailed state and tasks.")
-        await self.send_message(chat_id, "\n".join(lines))
+        await handle_projects(self, chat_id)
 
     async def handle_project_detail(self, chat_id: int, identifier: str):
-        if not identifier.strip():
-            await self.handle_projects(chat_id)
-            return
-
-        project = self.project_manager.get_project(identifier.strip())
-        if not project:
-            await self.send_message(chat_id, f"⚠️ Project `{identifier}` not found. Type `/projects` to list active projects.")
-            return
-
-        tasks_str = "\n".join(f"  {i+1}. {t}" for i, t in enumerate(project.active_tasks)) if project.active_tasks else "  (No pending tasks)"
-        text = (
-            f"📁 *Project:* `{project.name}` (`{project.id}`)\n"
-            f"• *Status:* `{project.status}`\n"
-            f"• *Path:* `{project.path}`\n"
-            f"• *Tech Stack:* `{project.tech_stack or 'None'}`\n"
-            f"• *Last Worked On:* `{project.last_worked_on[:19]}`\n\n"
-            f"📝 *Description:*\n_{project.description or 'No description provided.'}_\n\n"
-            f"📋 *Active Tasks:*\n{tasks_str}\n\n"
-            f"💡 *Notes:*\n```\n{project.notes or 'No notes recorded.'}\n```"
-        )
-        await self.send_message(chat_id, text)
+        await handle_project_detail(self, chat_id, identifier)
 
     async def handle_project_add(self, chat_id: int, arg_str: str):
-        parts = arg_str.strip().split(maxsplit=2)
-        if len(parts) < 2:
-            await self.send_message(chat_id, "⚠️ Usage: `/project_add <name> <path> [description]`")
-            return
-        name = parts[0]
-        path = parts[1]
-        desc = parts[2] if len(parts) > 2 else ""
-        proj = self.project_manager.bookmark_project(name=name, path=path, description=desc)
-        await self.send_message(
-            chat_id,
-            f"✅ *Successfully bookmarked project:*\n"
-            f"• Name: `{proj.name}`\n"
-            f"• ID: `{proj.id}`\n"
-            f"• Path: `{proj.path}`\n\n"
-            f"Type `/project {proj.id}` to view details."
-        )
+        await handle_project_add(self, chat_id, arg_str)
 
     async def handle_project_task(self, chat_id: int, arg_str: str):
-        parts = arg_str.strip().split(maxsplit=1)
-        if len(parts) < 2:
-            await self.send_message(chat_id, "⚠️ Usage: `/project_task <project_id> <task description>`")
-            return
-        pid = parts[0]
-        task_desc = parts[1]
-        proj = self.project_manager.add_task(pid, task_desc)
-        if not proj:
-            await self.send_message(chat_id, f"⚠️ Project `{pid}` not found. Use `/projects` to list.")
-            return
-        await self.send_message(chat_id, f"✅ Added task to *{proj.name}*:\n• `{task_desc}`")
+        await handle_project_task(self, chat_id, arg_str)
 
     async def handle_exec(self, chat_id: int, command: str):
-        if not command.strip():
-            await self.send_message(chat_id, "⚠️ Usage: `/exec <bash command>`")
-            return
+        await handle_exec(self, chat_id, command)
 
-        await self.send_chat_action(chat_id, "typing")
-        status_msg_id = await self.send_message(chat_id, f"⚡ *Executing:* `{command}`...")
+    async def handle_jev(self, chat_id: int, query: str):
+        await handle_jev(self, chat_id, query)
 
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await proc.communicate()
-        out_str = stdout.decode("utf-8", errors="replace")
-        err_str = stderr.decode("utf-8", errors="replace")
-
-        result = f"*Exit Code:* `{proc.returncode}`\n"
-        if out_str.strip():
-            result += f"**Output:**\n```\n{out_str[:3500]}\n```\n"
-        if err_str.strip():
-            result += f"**Errors:**\n```\n{err_str[:3500]}\n```"
-
-        if status_msg_id:
-            await self.edit_message_text(chat_id, status_msg_id, result)
-        else:
-            await self.send_message(chat_id, result)
-
-    def _classify_btw_intent(self, text: str) -> tuple[str, str]:
-        """
-        Classifies /btw input into ('live_status' | 'question' | 'task', clean_query).
-        Supports explicit prefixes and natural language heuristics.
-        """
-        raw = text.strip()
-        lower = raw.lower()
-
-        # Explicit prefix overrides
-        if lower.startswith("?") or lower.startswith("q:") or lower.startswith("ask:") or lower.startswith("query:"):
-            for prefix in ("?", "q:", "ask:", "query:"):
-                if lower.startswith(prefix):
-                    clean = raw[len(prefix):].strip()
-                    return ("question", clean or raw)
-        if lower.startswith(("queue:", "task:", "todo:", "do:", "later:")):
-            for prefix in ("queue:", "task:", "todo:", "do:", "later:"):
-                if lower.startswith(prefix):
-                    clean = raw[len(prefix):].strip()
-                    return ("task", clean or raw)
-
-        # Status / live telemetry inquiry
-        status_keywords = [
-            "where are you", "what are you doing", "what are u doing", "where r u",
-            "progress", "status", "how is it going", "how's it going", "sedang apa",
-            "lagi apa", "sampai mana", "current step", "what step",
-            "working on", "how far", "is it done", "are you done"
-        ]
-        if any(k in lower for k in status_keywords):
-            return ("live_status", raw)
-
-        # Explicit task steering / sequence keywords
-        task_indicators = (
-            "after this", "then ", "next ", "also do", "queue ",
-            "setelah ini", "nanti ", "tolong ", "please make sure",
-            "remember to", "make sure to", "ensure that", "run ",
-            "build ", "deploy ", "create ", "add ", "implement ",
-            "fix ", "test ", "install "
-        )
-        if not raw.endswith("?") and any(lower.startswith(ind) for ind in task_indicators):
-            return ("task", raw)
-
-        # Question indicators
-        question_words = (
-            "what", "why", "how", "who", "when", "where", "which",
-            "is", "are", "can", "could", "would", "should", "do", "does", "did",
-            "explain", "describe", "tell me", "summarize",
-            "apakah", "kenapa", "mengapa", "siapa", "gimana", "bagaimana", "adakah"
-        )
-        first_word = lower.split()[0] if lower.split() else ""
-        if raw.endswith("?") or first_word in question_words:
-            return ("question", raw)
-
-        # Default fallback: treat as task queue
-        return ("task", raw)
+    # -------------------------------------------------------------------------
+    # Intent & Sidecar (/btw) & Steering (/steer)
+    # -------------------------------------------------------------------------
+    def _classify_btw_intent(self, text: str):
+        return classify_btw_intent(text)
 
     async def _handle_btw_ephemeral_question(
         self,
@@ -534,254 +169,24 @@ class TelegramBot:
         last_action: Optional[str] = None,
         reply_to_message_id: Optional[int] = None,
     ):
-        """
-        Executes an ephemeral, side-channel question in parallel without interrupting
-        or polluting the primary background task's context window.
-        """
-        try:
-            placeholder_text = f"💬 *Side Question (/btw):*\n_{query}_\n\n⏳ _Consulting proxy engine..._"
-            msg_id = await self.send_message(chat_id, placeholder_text, reply_to_message_id=reply_to_message_id)
-
-            task_clause = ""
-            if task_preview:
-                task_clause = (
-                    f"\nBackground Context: The user is currently running an active operation: '{task_preview}'. "
-                    f"Current operation step is '{last_action or 'executing'}'. "
-                    f"If the question inquires about this operation, incorporate this context.\n"
-                )
-
-            prompt = (
-                f"You are Gemini-Hermes, answering an ephemeral side query (/btw) on Telegram.{task_clause}\n"
-                f"User Question: {query}\n\n"
-                f"Instructions:\n"
-                f"- Answer concisely, directly, and accurately.\n"
-                f"- If it's a general knowledge, absurd, or technical question, answer helpfully and engagingly.\n"
-                f"- Do NOT attempt to run tools or commands.\n"
-                f"- Keep formatting clean and readable for mobile Telegram."
-            )
-
-            raw_answer = await self.forwarder.ask_quick(prompt, timeout=35.0)
-
-            if not raw_answer or not raw_answer.strip():
-                final_text = (
-                    f"💬 *Side Answer (/btw):*\n_{query}_\n\n"
-                    f"⚠️ _Unable to retrieve side answer at this moment (engine timeout or busy)._\n\n"
-                    f"_The primary task continues running unaffected._"
-                )
-            else:
-                formatted_body = format_hermes_output(raw_answer.strip())
-                status_footer = (
-                    f"\n\n_Primary task continues running in background._"
-                    if task_preview
-                    else ""
-                )
-                final_text = f"💬 *Side Answer (/btw):*\n_{query}_\n\n{formatted_body}{status_footer}"
-
-            if msg_id:
-                edited = await self.edit_message_text(chat_id, msg_id, final_text)
-                if not edited:
-                    await self.send_message(chat_id, final_text)
-            else:
-                await self.send_message(chat_id, final_text)
-
-        except Exception as e:
-            logger.error(f"Error handling ephemeral /btw question: {e}", exc_info=True)
-            fallback = (
-                f"💬 *Side Answer (/btw):*\n"
-                f"⚠️ _An error occurred while answering your side question._\n\n"
-                f"_The primary task continues running unaffected._"
-            )
-            await self.send_message(chat_id, fallback)
+        await handle_btw_ephemeral_question(
+            self,
+            chat_id,
+            query,
+            task_preview=task_preview,
+            last_action=last_action,
+            reply_to_message_id=reply_to_message_id,
+        )
 
     async def handle_btw(self, chat_id: int, user_id: int, text: str, message_id: Optional[int] = None):
-        query = text.strip()
-        if not query:
-            await self.send_message(
-                chat_id,
-                "ℹ️ *Usage of `/btw`:*\n\n"
-                "• *Side questions & trivia:* `/btw why is the sky blue?` or `/btw ? what is TCP?`\n"
-                "• *Live status check:* `/btw what are you doing now?`\n"
-                "• *Queue next task:* `/btw after this, write tests` or `/btw task: deploy app`\n\n"
-                "_Side questions run in parallel without interrupting or polluting active tasks._",
-                reply_to_message_id=message_id,
-            )
-            return
-
-        intent, clean_query = self._classify_btw_intent(query)
-        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
-
-        if not is_running:
-            if intent == "live_status":
-                await self.send_message(
-                    chat_id,
-                    "ℹ️ *Status:* No background task is currently running. I am idle and ready for requests!",
-                    reply_to_message_id=message_id,
-                )
-                return
-            elif intent == "question":
-                # Execute as an ephemeral side question
-                asyncio.create_task(
-                    self._handle_btw_ephemeral_question(chat_id, clean_query, reply_to_message_id=message_id)
-                )
-                return
-            else:
-                # Task intent: execute directly as a chat message
-                await self.send_message(
-                    chat_id,
-                    f"💡 *Executing `/btw` task directly:* `{clean_query}`",
-                    reply_to_message_id=message_id,
-                )
-                task = asyncio.create_task(
-                    self.handle_chat_message(chat_id, user_id, clean_query, reply_to_message_id=message_id)
-                )
-                self._active_tasks[chat_id] = task
-                return
-
-        # An active task is currently running in background
-        info = self._active_task_info.get(chat_id, {})
-        last_action = info.get("last_action", "Executing operation...")
-        start_time = info.get("start_time", time.time())
-        elapsed = int(time.time() - start_time)
-        task_prompt = info.get("text", "")
-        task_preview = task_prompt.splitlines()[0] if task_prompt else "Ongoing operation"
-        if len(task_preview) > 75:
-            task_preview = task_preview[:72] + "..."
-
-        if intent == "live_status":
-            status_text = (
-                f"💬 *Side Query (Live Task Telemetry):*\n\n"
-                f"• *Primary Task:* `{task_preview}`\n"
-                f"• *Current Step:* {last_action}\n"
-                f"• *Elapsed Time:* `{elapsed}s`\n"
-                f"• *Status:* ⚙️ Actively executing in background\n\n"
-                f"_The primary task continues uninterrupted._"
-            )
-            await self.send_message(chat_id, status_text, reply_to_message_id=message_id)
-            return
-
-        elif intent == "question":
-            # Ephemeral side question executed concurrently in background
-            asyncio.create_task(
-                self._handle_btw_ephemeral_question(
-                    chat_id,
-                    clean_query,
-                    task_preview=task_preview,
-                    last_action=last_action,
-                    reply_to_message_id=message_id,
-                )
-            )
-            return
-
-        else:
-            # Steering directive or Queued Task
-            if chat_id not in self._task_queues:
-                self._task_queues[chat_id] = []
-            max_q = getattr(self, "max_queue_size", 10)
-            if len(self._task_queues[chat_id]) >= max_q:
-                await self.send_message(
-                    chat_id,
-                    f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
-                    "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
-                    reply_to_message_id=message_id,
-                )
-                return
-            queued_item = QueuedTask(clean_query, message_id=message_id, item_type="btw_task")
-            self._task_queues[chat_id].append(queued_item)
-            q_pos = len(self._task_queues[chat_id])
-
-            reply_text = (
-                f"📥 *Queued Task for Later Execution (/btw):*\n"
-                f"`{clean_query}`\n\n"
-                f"• *Primary Task:* Continues in background ({last_action})\n"
-                f"• *Queue Position:* `#{q_pos}`\n"
-                f"• *Execution:* Will automatically run as soon as the active operation completes!"
-            )
-            await self.send_message(chat_id, reply_text, reply_to_message_id=message_id)
+        await handle_btw(self, chat_id, user_id, text, message_id=message_id)
 
     async def handle_steer(self, chat_id: int, user_id: int, text: str, message_id: Optional[int] = None):
-        directive = text.strip()
-        if not directive:
-            await self.send_message(
-                chat_id,
-                "🧭 *Usage of `/steer`:*\n\n"
-                "Use `/steer <instruction>` to immediately redirect or change the agent's course of action.\n\n"
-                "• *Mid-Flight Intervention:* If an operation is running, `/steer <new direction>` instantly halts the active step and pivots to your new instructions within the same conversation.\n"
-                "• *Direct Guidance:* If idle, `/steer <directive>` executes your instructions with high steering priority.\n\n"
-                "*Examples:*\n"
-                "• `/steer Stop creating Postgres tables, use SQLite with Prisma instead`\n"
-                "• `/steer Switch focus to writing unit tests first`\n"
-                "• `/steer Keep current backend code, but change UI to dark mode`",
-                reply_to_message_id=message_id,
-            )
-            return
+        await handle_steer(self, chat_id, user_id, text, message_id=message_id)
 
-        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
-
-        if is_running:
-            info = self._active_task_info.get(chat_id, {})
-            info["steered"] = True
-            last_action = info.get("last_action", "Executing operation...")
-            task_prompt = info.get("text", "")
-            task_preview = task_prompt.splitlines()[0] if task_prompt else "Ongoing operation"
-            if len(task_preview) > 75:
-                task_preview = task_preview[:72] + "..."
-
-            # Cancel running task
-            curr_task = self._active_tasks.get(chat_id)
-            if curr_task and not curr_task.done():
-                curr_task.cancel()
-
-            # Brief pause to allow cancellation cleanup to propagate
-            await asyncio.sleep(0.1)
-
-            steer_prompt = (
-                f"[USER STEERING DIRECTIVE]\n"
-                f"The user has explicitly intervened to steer and redirect your course of action.\n\n"
-                f"• Previous Objective: {task_preview}\n"
-                f"• Status Before Steering: {last_action}\n"
-                f"• New Steering Direction: {directive}\n\n"
-                f"Operating Instructions:\n"
-                f"1. Immediately adopt the new steering direction above.\n"
-                f"2. Stop and discard any previous sub-tasks, plans, or assumptions that conflict with this directive.\n"
-                f"3. Acknowledge the course correction concisely and proceed to execute the new direction directly."
-            )
-
-            await self.send_message(
-                chat_id,
-                f"🧭 *Course Correction (Steering Applied)*\n\n"
-                f"• *Previous Action:* `{last_action}` (redirected)\n"
-                f"• *New Direction:* `{directive}`\n\n"
-                f"_Pivoting immediately into the updated direction..._",
-                reply_to_message_id=message_id,
-            )
-
-            new_task = asyncio.create_task(
-                self.handle_chat_message(chat_id, user_id, steer_prompt, reply_to_message_id=message_id)
-            )
-            self._active_tasks[chat_id] = new_task
-            return
-        else:
-            steer_prompt = (
-                f"[USER STEERING DIRECTIVE]\n"
-                f"The user has provided an explicit steering directive:\n"
-                f"{directive}\n\n"
-                f"Operating Instructions:\n"
-                f"1. Adopt this direction as top priority.\n"
-                f"2. Proceed to execute according to this directive."
-            )
-
-            await self.send_message(
-                chat_id,
-                f"🧭 *Steering Directive Applied:*\n`{directive}`\n\n_Executing with updated steering focus..._",
-                reply_to_message_id=message_id,
-            )
-
-            task = asyncio.create_task(
-                self.handle_chat_message(chat_id, user_id, steer_prompt, reply_to_message_id=message_id)
-            )
-            self._active_tasks[chat_id] = task
-            return
-
+    # -------------------------------------------------------------------------
+    # Task Queue Management
+    # -------------------------------------------------------------------------
     async def _enqueue_task(
         self,
         chat_id: int,
@@ -790,72 +195,17 @@ class TelegramBot:
         preview_override: Optional[str] = None,
         message_id: Optional[int] = None,
     ) -> bool:
-        """
-        Enqueues an item (chat message, image prompt, doc prompt) into the sequential task queue.
-        Enforces max_queue_size to prevent runaway memory or queue exhaustion.
-        """
-        if chat_id not in self._task_queues:
-            self._task_queues[chat_id] = []
-
-        max_q = getattr(self, "max_queue_size", 10)
-        if len(self._task_queues[chat_id]) >= max_q:
-            await self.send_message(
-                chat_id,
-                f"⚠️ *Task Queue Full* ({len(self._task_queues[chat_id])}/{max_q} items).\n\n"
-                "Please wait for active tasks to complete, or use `/cancel` to clear the queue.",
-                reply_to_message_id=message_id,
-            )
-            return False
-
-        queued_item = (
-            item if isinstance(item, QueuedTask)
-            else QueuedTask(item, message_id=message_id, item_type=item_type)
+        return await enqueue_task(
+            self,
+            chat_id=chat_id,
+            item=item,
+            item_type=item_type,
+            preview_override=preview_override,
+            message_id=message_id,
         )
-        self._task_queues[chat_id].append(queued_item)
-        q_pos = len(self._task_queues[chat_id])
-
-        if preview_override:
-            preview = preview_override
-        elif item_type == "image":
-            preview = "Attached Image Analysis"
-        elif item_type == "document":
-            preview = "Attached File Analysis"
-        else:
-            preview = item if len(item) <= 80 else item[:77] + "..."
-
-        type_label = item_type.capitalize()
-        await self.send_message(
-            chat_id,
-            f"📥 *{type_label} Queued* (`#{q_pos}` in queue)\n"
-            f"`{preview}`\n\n"
-            f"• *Status:* Active operation still executing\n"
-            f"• *Next:* Will run automatically once current task completes.\n"
-            f"• _Quick actions: `/steer <msg>` to redirect now | `/queue` | `/cancel`_",
-            reply_to_message_id=message_id,
-        )
-        return True
 
     async def handle_queue(self, chat_id: int):
-        q = self._task_queues.get(chat_id, [])
-        is_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
-        if not is_running and not q:
-            await self.send_message(chat_id, "📭 Task queue is empty. No tasks are running.")
-            return
-
-        lines = ["📋 *Task Queue Status:*\n"]
-        if is_running:
-            info = self._active_task_info.get(chat_id, {})
-            last_act = info.get("last_action", "Running...")
-            lines.append(f"• *[ACTIVE]* Currently: `{last_act}`\n")
-        if q:
-            lines.append("*Queued items:*")
-            for i, item in enumerate(q, 1):
-                preview = item if len(item) <= 70 else item[:67] + "..."
-                lines.append(f"  {i}. `{preview}`")
-        else:
-            lines.append("• No pending queued items.")
-
-        await self.send_message(chat_id, "\n".join(lines))
+        await handle_queue(self, chat_id)
 
     async def _run_queued_task(
         self,
@@ -864,27 +214,11 @@ class TelegramBot:
         text: str,
         reply_to_message_id: Optional[int] = None,
     ):
-        try:
-            await asyncio.sleep(0.5)
-            if reply_to_message_id is None:
-                reply_to_message_id = getattr(text, "message_id", None)
+        await run_queued_task(self, chat_id, user_id, text, reply_to_message_id=reply_to_message_id)
 
-            item_type = getattr(text, "item_type", "")
-            if item_type == "image" or "[Attached User Image:" in text:
-                notice = "⚡ *Processing queued image analysis...*"
-            elif item_type == "document" or "[Attached User File:" in text:
-                notice = "⚡ *Processing queued file analysis...*"
-            else:
-                preview = text if len(text) <= 80 else text[:77] + "..."
-                notice = f"⚡ *Processing queued task:*\n`{preview}`"
-            await self.send_message(chat_id, notice, reply_to_message_id=reply_to_message_id)
-            task = asyncio.create_task(
-                self.handle_chat_message(chat_id, user_id, text, reply_to_message_id=reply_to_message_id)
-            )
-            self._active_tasks[chat_id] = task
-        except Exception as e:
-            logger.error(f"Error starting queued task for chat_id={chat_id}: {e}", exc_info=True)
-
+    # -------------------------------------------------------------------------
+    # Core Execution Loop (Delegated to ExecutionRunner)
+    # -------------------------------------------------------------------------
     async def handle_chat_message(
         self,
         chat_id: int,
@@ -892,244 +226,17 @@ class TelegramBot:
         user_text: str,
         reply_to_message_id: Optional[int] = None,
     ):
-        curr_task = asyncio.current_task()
-        if curr_task:
-            self._active_tasks[chat_id] = curr_task
-
-        self._active_task_info[chat_id] = {
-            "text": user_text,
-            "start_time": time.time(),
-            "last_action": "Thinking and planning...",
-            "status_count": 0,
-            "user_id": user_id,
-        }
-
-        sess = self.memory_store.get_session(chat_id)
-        conv_id = sess.get("conversation_id")
-
-        # Build prompt with Hermes cognitive persona, memory, skills, and project index
-        system_prompt = build_system_prompt(
-            self.memory_store,
-            self.skill_manager,
-            project_manager=self.project_manager,
-            current_chat_id=chat_id,
-        )
-        full_prompt = (
-            f"{system_prompt}\n\n"
-            f"### User Message\n{user_text}\n\n"
-            f"Respond adhering to your Gemini-Hermes persona."
+        await ExecutionRunner.execute_turn(
+            self,
+            chat_id=chat_id,
+            user_id=user_id,
+            user_text=user_text,
+            reply_to_message_id=reply_to_message_id,
         )
 
-        await self.send_chat_action(chat_id, "typing")
-
-        stop_typing = asyncio.Event()
-        is_typing_active = asyncio.Event()
-        is_typing_active.set()  # Initially active while thinking
-
-        tool_active_event = asyncio.Event()
-        current_tool_name = [""]
-        current_tool_start = [0.0]
-
-        async def _typing_heartbeat():
-            while not stop_typing.is_set():
-                try:
-                    if is_typing_active.is_set():
-                        await self.send_chat_action(chat_id, "typing")
-                    await asyncio.wait_for(stop_typing.wait(), timeout=4.5)
-                except asyncio.TimeoutError:
-                    pass
-                except Exception:
-                    break
-
-        # Single live status/response message handle for in-place editing (mutable container for heartbeat access)
-        status_message_ref = [None]  # type: List[Optional[int]]
-        has_tool_run = False
-
-        async def _tool_heartbeat():
-            while not stop_typing.is_set():
-                try:
-                    await asyncio.sleep(15.0)
-                    if stop_typing.is_set():
-                        break
-                    if tool_active_event.is_set() and current_tool_start[0] > 0:
-                        elapsed = int(time.time() - current_tool_start[0])
-                        action = current_tool_name[0]
-                        if elapsed >= 15:
-                            pulse_msg = f"⏳ Still executing: `{action}` ({elapsed}s elapsed)..."
-                            if status_message_ref[0]:
-                                await self.edit_message_text(chat_id, status_message_ref[0], pulse_msg, parse_mode="Markdown")
-                            else:
-                                sent_id = await self.send_message(chat_id, pulse_msg, parse_mode="Markdown")
-                                if sent_id:
-                                    status_message_ref[0] = sent_id
-                except asyncio.CancelledError:
-                    break
-                except Exception as e:
-                    logger.debug(f"Tool heartbeat error: {e}")
-
-        typing_task = asyncio.create_task(_typing_heartbeat())
-        tool_heartbeat_task = asyncio.create_task(_tool_heartbeat())
-
-        if config.stream_updates:
-            status_message_ref[0] = await self.send_message(
-                chat_id,
-                "💭 *Gemini-Hermes is thinking...*",
-                reply_to_message_id=reply_to_message_id,
-            )
-
-        accumulated_text = ""
-        last_edit_time = time.time()
-        last_status_time = 0.0
-        last_status_action = ""
-        last_active_action = ""
-        final_result: Optional[ForwarderResult] = None
-
-        try:
-            async for event in self.forwarder.forward_stream(full_prompt, conv_id):
-                if isinstance(event, TokenDelta):
-                    tool_active_event.clear()
-                    current_tool_start[0] = 0.0
-                    is_typing_active.set()
-                    accumulated_text += event.text
-                    now = time.time()
-                    if (
-                        status_message_ref[0]
-                        and config.stream_updates
-                        and (now - last_edit_time >= config.stream_edit_interval)
-                        and len(accumulated_text.strip()) > 0
-                    ):
-                        last_edit_time = now
-                        formatted_preview = format_hermes_output(accumulated_text)
-                        preview = sanitize_streaming_markdown(formatted_preview) + " ▌"
-                        if len(preview) <= 4000:
-                            await self.edit_message_text(chat_id, status_message_ref[0], preview)
-
-                elif isinstance(event, ToolExecutionUpdate):
-                    is_typing_active.clear()
-                    tool_active_event.set()
-                    has_tool_run = True
-                    current_tool_name[0] = event.action
-                    current_tool_start[0] = time.time()
-                    last_active_action = event.action
-                    if chat_id in self._active_task_info:
-                        self._active_task_info[chat_id]["last_action"] = event.action
-                        self._active_task_info[chat_id]["status_count"] += 1
-                    now = time.time()
-                    interval = getattr(config, "status_notify_interval", 1.2)
-                    if event.action != last_status_action and (now - last_status_time >= interval):
-                        last_status_time = now
-                        last_status_action = event.action
-
-                        status_msg = f"🔨 *Currently:* `{event.action}`"
-                        if status_message_ref[0]:
-                            await self.edit_message_text(chat_id, status_message_ref[0], status_msg, parse_mode="Markdown")
-                        else:
-                            sent_id = await self.send_message(chat_id, status_msg, parse_mode="Markdown")
-                            if sent_id:
-                                status_message_ref[0] = sent_id
-
-                elif isinstance(event, ForwarderResult):
-                    is_typing_active.clear()
-                    tool_active_event.clear()
-                    current_tool_start[0] = 0.0
-                    final_result = event
-
-            # Generation finished
-            final_text = (
-                final_result.response
-                if (final_result and final_result.response.strip())
-                else accumulated_text
-            )
-
-            new_conv_id = (final_result and final_result.conversation_id) or conv_id
-
-            if final_result and final_result.status in ("ERROR", "TIMEOUT") and final_result.error:
-                final_text = humanize_error(final_result.error, last_action=last_active_action)
-            elif not final_text.strip():
-                if final_result and final_result.error:
-                    final_text = humanize_error(final_result.error, last_action=last_active_action)
-                else:
-                    final_text = humanize_error("Empty response received from engine.", last_action=last_active_action)
-
-            # Update session stats
-            in_tok = final_result.input_tokens if final_result else 0
-            out_tok = final_result.output_tokens if final_result else 0
-            self.memory_store.update_session(
-                chat_id,
-                conversation_id=new_conv_id,
-                input_tokens=in_tok,
-                output_tokens=out_tok,
-            )
-
-            # Format hermes output
-            formatted_text = format_hermes_output(final_text)
-            chunks = split_message(formatted_text)
-
-            if status_message_ref[0]:
-                # Clean in-place transition: replace status message with the final response
-                edited_ok = await self.edit_message_text(chat_id, status_message_ref[0], chunks[0])
-                if not edited_ok:
-                    # If edit failed (e.g. deleted by user or parse error), fallback to send_message
-                    await self.send_message(chat_id, chunks[0], reply_to_message_id=reply_to_message_id)
-                for chunk in chunks[1:]:
-                    await self.send_message(chat_id, chunk)
-            else:
-                if chunks:
-                    await self.send_message(chat_id, chunks[0], reply_to_message_id=reply_to_message_id)
-                    for chunk in chunks[1:]:
-                        await self.send_message(chat_id, chunk)
-
-        except asyncio.CancelledError:
-            logger.info(f"Task for chat_id={chat_id} was cancelled.")
-            info = self._active_task_info.get(chat_id, {})
-            was_steered = info.get("steered", False)
-            if was_steered:
-                steer_halt_note = f"⏸️ *Superseded by `/steer`:* `{last_active_action or 'Previous operation'}` halted."
-                if status_message_ref[0]:
-                    await self.edit_message_text(chat_id, status_message_ref[0], steer_halt_note)
-            else:
-                cancel_msg = "🛑 *Operation Cancelled.*\nThe ongoing request was stopped."
-                if status_message_ref[0]:
-                    await self.edit_message_text(chat_id, status_message_ref[0], cancel_msg)
-                else:
-                    await self.send_message(chat_id, cancel_msg, reply_to_message_id=reply_to_message_id)
-            raise
-        except Exception as e:
-            logger.error(f"Error handling message: {e}", exc_info=True)
-            err_text = humanize_error(str(e), last_action=last_active_action)
-            if status_message_ref[0]:
-                await self.edit_message_text(chat_id, status_message_ref[0], err_text)
-            else:
-                await self.send_message(chat_id, err_text, reply_to_message_id=reply_to_message_id)
-        finally:
-            stop_typing.set()
-            if not typing_task.done():
-                typing_task.cancel()
-            if not tool_heartbeat_task.done():
-                tool_heartbeat_task.cancel()
-
-            info = self._active_task_info.get(chat_id, {})
-            was_steered = info.get("steered", False)
-
-            if self._active_tasks.get(chat_id) is curr_task:
-                self._active_tasks.pop(chat_id, None)
-            if not was_steered:
-                self._active_task_info.pop(chat_id, None)
-
-            # Check if there is a queued /btw task (only if not steered)
-            if not was_steered and chat_id in self._task_queues and self._task_queues[chat_id]:
-                next_task_text = self._task_queues[chat_id].pop(0)
-                next_reply_id = getattr(next_task_text, "message_id", None)
-                logger.info(
-                    f"Triggering next queued task for chat_id={chat_id}: {next_task_text[:50]} (reply_to={next_reply_id})"
-                )
-                if next_reply_id is not None:
-                    asyncio.create_task(
-                        self._run_queued_task(chat_id, user_id, next_task_text, reply_to_message_id=next_reply_id)
-                    )
-                else:
-                    asyncio.create_task(self._run_queued_task(chat_id, user_id, next_task_text))
-
+    # -------------------------------------------------------------------------
+    # Message Dispatcher & Update Ingestion
+    # -------------------------------------------------------------------------
     async def process_update(self, update: Dict[str, Any]):
         msg = update.get("message") or update.get("edited_message")
         if not msg:
@@ -1159,54 +266,7 @@ class TelegramBot:
         is_task_running = chat_id in self._active_tasks and not self._active_tasks[chat_id].done()
 
         # Contextual quoting from inbound Telegram replies
-        reply_context = ""
-        if isinstance(reply_to, dict):
-            r_from = reply_to.get("from") or {}
-            r_sender = (
-                r_from.get("first_name")
-                or r_from.get("username")
-                or reply_to.get("sender_chat", {}).get("title")
-                or "User"
-            )
-            r_text = (reply_to.get("text") or reply_to.get("caption") or "").strip()
-            if r_text:
-                if len(r_text) > 300:
-                    r_text = r_text[:297] + "..."
-                reply_context = f'[Replying to message from {r_sender}: "{r_text}"]\n\n'
-            elif "photo" in reply_to and reply_to["photo"] is not None:
-                reply_context = f"[Replying to photo from {r_sender}]\n\n"
-            elif "document" in reply_to and reply_to["document"] is not None:
-                doc = reply_to.get("document") or {}
-                doc_name = doc.get("file_name", "file") if isinstance(doc, dict) else "file"
-                reply_context = f"[Replying to file ({doc_name}) from {r_sender}]\n\n"
-            elif "voice" in reply_to and reply_to["voice"] is not None:
-                reply_context = f"[Replying to voice message from {r_sender}]\n\n"
-            elif "audio" in reply_to and reply_to["audio"] is not None:
-                aud = reply_to.get("audio") or {}
-                audio_title = aud.get("title", "audio") if isinstance(aud, dict) else "audio"
-                reply_context = f"[Replying to audio ({audio_title}) from {r_sender}]\n\n"
-            elif "video" in reply_to and reply_to["video"] is not None:
-                reply_context = f"[Replying to video from {r_sender}]\n\n"
-            elif "sticker" in reply_to and reply_to["sticker"] is not None:
-                stk = reply_to.get("sticker") or {}
-                emoji = stk.get("emoji", "") if isinstance(stk, dict) else ""
-                reply_context = (
-                    f"[Replying to sticker {emoji} from {r_sender}]\n\n"
-                    if emoji
-                    else f"[Replying to sticker from {r_sender}]\n\n"
-                )
-            elif "poll" in reply_to and reply_to["poll"] is not None:
-                pl = reply_to.get("poll") or {}
-                poll_q = pl.get("question", "poll") if isinstance(pl, dict) else "poll"
-                reply_context = f'[Replying to poll "{poll_q}" from {r_sender}]\n\n'
-            elif "location" in reply_to and reply_to["location"] is not None:
-                reply_context = f"[Replying to shared location from {r_sender}]\n\n"
-            elif "contact" in reply_to and reply_to["contact"] is not None:
-                cnt = reply_to.get("contact") or {}
-                contact_name = cnt.get("first_name", "contact") if isinstance(cnt, dict) else "contact"
-                reply_context = f"[Replying to shared contact ({contact_name}) from {r_sender}]\n\n"
-            else:
-                reply_context = f"[Replying to message from {r_sender}]\n\n"
+        reply_context = extract_reply_context(reply_to)
 
         # Handle photos / images
         if photo:
@@ -1269,7 +329,9 @@ class TelegramBot:
                 local_path = os.path.join(self.media_dir, f"{int(time.time())}_{file_name}")
                 downloaded = await self.download_file_to(tg_file_path, local_path)
                 if downloaded:
-                    is_image = doc_mime.startswith("image/") or file_name.lower().endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))
+                    is_image = doc_mime.startswith("image/") or file_name.lower().endswith(
+                        (".png", ".jpg", ".jpeg", ".webp", ".gif")
+                    )
                     instruction = (
                         f"Use your `view_file` tool to view and visually analyze this image."
                         if is_image
@@ -1322,16 +384,7 @@ class TelegramBot:
             elif cmd == "/help":
                 await self.handle_help(chat_id)
             elif cmd in ("/new", "/reset"):
-                if chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
-                    self._active_tasks[chat_id].cancel()
-                    self._active_tasks.pop(chat_id, None)
-                self._task_queues.pop(chat_id, None)
-                self._active_task_info.pop(chat_id, None)
-                self.memory_store.reset_session(chat_id)
-                await self.send_message(
-                    chat_id,
-                    "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",
-                )
+                await handle_reset(self, chat_id)
             elif cmd == "/btw":
                 effective_arg = f"{reply_context}{arg}" if reply_context and arg else arg
                 await self.handle_btw(chat_id, user_id, effective_arg, message_id=message_id)
@@ -1341,18 +394,7 @@ class TelegramBot:
             elif cmd == "/queue":
                 await self.handle_queue(chat_id)
             elif cmd == "/cancel":
-                cancelled = False
-                if chat_id in self._active_tasks and not self._active_tasks[chat_id].done():
-                    self._active_tasks[chat_id].cancel()
-                    self._active_tasks.pop(chat_id, None)
-                    cancelled = True
-                self._active_task_info.pop(chat_id, None)
-                q_count = len(self._task_queues.get(chat_id, []))
-                self._task_queues.pop(chat_id, None)
-                if cancelled or q_count:
-                    await self.send_message(chat_id, f"🛑 Ongoing task cancelled and {q_count} queued item(s) cleared.")
-                else:
-                    await self.send_message(chat_id, "ℹ️ No running task or queued items to cancel.")
+                await handle_cancel(self, chat_id)
             elif cmd == "/status":
                 await self.handle_status(chat_id)
             elif cmd == "/memory":
@@ -1366,8 +408,7 @@ class TelegramBot:
             elif cmd == "/ref_add":
                 await self.handle_ref_add(chat_id, arg)
             elif cmd == "/memory_reset":
-                self.memory_store.reset_long_term_memory()
-                await self.send_message(chat_id, "🧹 Long-term memory has been reset to defaults.")
+                await handle_memory_reset(self, chat_id)
             elif cmd == "/skills":
                 await self.handle_skills(chat_id)
             elif cmd == "/skill":
@@ -1382,6 +423,8 @@ class TelegramBot:
                 await self.handle_project_task(chat_id, arg)
             elif cmd == "/exec":
                 await self.handle_exec(chat_id, arg)
+            elif cmd == "/jev":
+                await self.handle_jev(chat_id, arg)
             else:
                 await self.send_message(chat_id, f"❓ Unknown command: `{cmd}`. Type `/help` for available commands.")
         else:
@@ -1401,6 +444,9 @@ class TelegramBot:
                     reply_to_message_id=message_id,
                 )
 
+    # -------------------------------------------------------------------------
+    # Lifecycle & Polling Loop
+    # -------------------------------------------------------------------------
     async def run(self):
         if not self.token:
             logger.error("No Telegram Bot Token provided. Configure TELEGRAM_BOT_TOKEN in .env or run setup.")
