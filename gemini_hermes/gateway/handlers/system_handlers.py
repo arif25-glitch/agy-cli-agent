@@ -123,32 +123,3 @@ async def handle_exec(bot: Any, chat_id: int, command: str):
         await bot.send_message(chat_id, result)
 
 
-async def handle_jev(bot: Any, chat_id: int, query: str):
-    if not query.strip():
-        await bot.send_message(
-            chat_id,
-            "🎯 *Jev AI System-One Decision Engine*\n\n"
-            "Usage: `/jev <prompt or instruction>`\n\n"
-            "Evaluates whether a task can be instantaneously routed via TypeSafe AI's "
-            "System-One decision model or requires Antigravity CLI's System-Two deep thinking."
-        )
-        return
-
-    from gemini_hermes.services.jev_client import JevClient
-    jev = JevClient()
-    outcome = await jev.decide(query)
-
-    tier_label = "⚡ System-One (Instant Direct Routing)" if not outcome.requires_system_two else "🧠 System-Two Fallback (Antigravity CLI)"
-    mode_label = "Live API" if jev.api_key else "Local Sandbox / Heuristic"
-
-    text = (
-        f"🎯 *Jev AI Evaluation*\n\n"
-        f"• *Input Query:* `{query.strip()[:80]}`\n"
-        f"• *Category:* `{outcome.category.value}`\n"
-        f"• *Confidence:* `{outcome.confidence:.1%}` ({'High Confidence' if outcome.is_high_confidence else 'Uncertain'})\n"
-        f"• *Routing Tier:* {tier_label}\n"
-        f"• *Action Directive:* `{outcome.suggested_action or 'none'}`\n"
-        f"• *Engine Mode:* `{mode_label}`"
-    )
-    await bot.send_message(chat_id, text)
-

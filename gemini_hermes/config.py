@@ -63,14 +63,6 @@ class Config(BaseModel):
     status_notify_interval: float = Field(
         default_factory=lambda: float(os.environ.get("STATUS_NOTIFY_INTERVAL", "1.2"))
     )
-    jev_api_key: str = Field(default_factory=lambda: os.environ.get("JEV_API_KEY", ""))
-    jev_api_base: str = Field(default_factory=lambda: os.environ.get("JEV_API_BASE", "https://api.typesafe.ai/v1"))
-    jev_confidence_threshold: float = Field(
-        default_factory=lambda: float(os.environ.get("JEV_CONFIDENCE_THRESHOLD", "0.85"))
-    )
-    jev_enabled: bool = Field(
-        default_factory=lambda: os.environ.get("JEV_ENABLED", "false").lower() in ("true", "1", "yes")
-    )
 
     @property
     def is_configured(self) -> bool:

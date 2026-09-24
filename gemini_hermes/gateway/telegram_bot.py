@@ -25,7 +25,6 @@ from gemini_hermes.gateway.handlers import (
     handle_help,
     handle_status,
     handle_exec,
-    handle_jev,
     handle_memory,
     handle_compact,
     handle_memory_add,
@@ -151,9 +150,6 @@ class TelegramBot(TelegramClient):
 
     async def handle_exec(self, chat_id: int, command: str):
         await handle_exec(self, chat_id, command)
-
-    async def handle_jev(self, chat_id: int, query: str):
-        await handle_jev(self, chat_id, query)
 
     # -------------------------------------------------------------------------
     # Intent & Sidecar (/btw) & Steering (/steer)
@@ -423,8 +419,6 @@ class TelegramBot(TelegramClient):
                 await self.handle_project_task(chat_id, arg)
             elif cmd == "/exec":
                 await self.handle_exec(chat_id, arg)
-            elif cmd == "/jev":
-                await self.handle_jev(chat_id, arg)
             else:
                 await self.send_message(chat_id, f"❓ Unknown command: `{cmd}`. Type `/help` for available commands.")
         else:

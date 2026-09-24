@@ -2,19 +2,6 @@
 
 ## Active Tasks
 
-- [x] Dual Verification completed for Jev AI System-One Decision Engine & Subsystem Modularization:
-  * Phase 1 (Goal & Boundary): Architect Jev AI (TypeSafe AI) System-One decision integration for fast, type-safe query routing with calibrated confidence scoring, alongside memory subsystem modularization (`SessionStore`, `BacklogArchiver`).
-  * Phase 2 (Architecture & Resilience):
-    - Jev Types (`brain/jev_types.py`): Typed `JevCategory` enum, `JevDecisionOutcome` contract with calibrated confidence, parameters, and System-Two fallback detection.
-    - Jev Service Client (`services/jev_client.py`): Dual-mode client supporting live TypeSafe AI API endpoints with graceful offline sandbox heuristic mode for immediate testability.
-    - Telegram Gateway Command (`/jev` in `handlers/system_handlers.py`): Allows users to query the decision model, displaying category, confidence, and routing tier.
-    - Subsystem Modularization (`memory/session_store.py` & `memory/archiver.py`): Separated session persistence and task archiving from `MemoryStore`.
-  * Phase 3 (Incremental Draft): Implemented services, types, handlers, and config parameters (`JEV_API_KEY`, `JEV_API_BASE`, `JEV_CONFIDENCE_THRESHOLD`, `JEV_ENABLED`).
-  * Phase 4 (Dual Verification - 77 Passed Tests):
-    - Added 7 dedicated unit tests in `tests/test_jev_ai.py` (3 positive paths + 4 negative stress tests).
-    - 70 existing tests in `test_gemini_hermes.py` and `test_modular_gateway.py` continue to pass 100%.
-  * Phase 5 (Release & Remote Sync): Synced to branch `develop/jev` and pushed to remote origin.
-
 - [x] Dual Verification completed for Modular Gateway Architecture Refactoring:
   * Phase 1 (Goal & Boundary): Deconstruct monolithic `telegram_bot.py` (>1,400 LOC) into clean, React/modern-style layers (services, helpers, handlers, models, execution runner) while preserving 100% backward compatibility for all existing tests and CLI scripts.
   * Phase 2 (Architecture & Decomposition):
