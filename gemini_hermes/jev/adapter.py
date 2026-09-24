@@ -40,6 +40,26 @@ class JevAdapter:
         """True only if Jev is enabled in config/env and SDK/API key are ready."""
         return self.client.is_available
 
+    async def select_model_and_effort(
+        self,
+        text: str,
+        default_model: str = "gemini-3.7-flash",
+        default_effort: str = "medium",
+        timeout: Optional[float] = None,
+    ) -> Tuple[str, str, Optional[JevReflexDecision]]:
+        """Determine both Antigravity model and reasoning effort dynamically."""
+        if not self.is_available or not (
+            getattr(self.config, "jev_dynamic_effort", False)
+            or getattr(self.config, "jev_dynamic_model", False)
+        ):
+            return default_model, default_effort, None
+        return await self.effort_selector.select_model_and_effort(
+            text,
+            default_model=default_model,
+            default_effort=default_effort,
+            timeout=timeout,
+        )
+
     async def select_reasoning_effort(
         self,
         text: str,

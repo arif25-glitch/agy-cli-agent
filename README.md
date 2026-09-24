@@ -1,16 +1,15 @@
-# 🪐 Gemini-Hermes AI Agent `v1.6.0`
+# 🪐 Gemini-Hermes AI Agent `v1.7.0`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.6.0 Highlights:**
-> - **TypeSafe AI (Jev) Foundation & Isolated Service Shell**: Standalone, decoupled reflex service shell ([`JevService`](file:///home/arif/agy-hermes/gemini_hermes/services/jev_service.py)) supporting fast System-One decision primitives (`Choice`, `Score`, `Noul`) with strict timeout guards and graceful fallbacks.
-> - **100% Optional / Zero-Crash Design**: Core bot dependencies stay ultra-lean (`requirements.txt`). Optional TypeSafe SDK dependencies are isolated in `requirements-jev.txt`. Bot never stalls or breaks if Jev is disabled or missing.
-> - **Interactive Configuration Wizard (`./run.sh config`)**: Safe interactive configuration wizard to inspect and configure Telegram, Antigravity, and TypeSafe AI keys without clobbering `.env`.
-> - **Modular Gateway Architecture**: Clean modular separation into `services/` (HTTP transport), `helpers/` (reply parsing & intent triage), `handlers/` (command dispatch), `models.py` (`QueuedTask`), and `runner.py` (`ExecutionRunner`).
-> - **Targeted Telegram Message Quoting & Reply Awareness**: Full bi-directional reply targeting with Telegram visual quote headers (`reply_to_message_id` & `reply_parameters`) and inbound contextual quoting across 9 media types.
-> - **Automatic Chat Queueing ("Zero Message Drop")**: Sequential FIFO execution queue with capacity protection (`max_queue_size = 10`) and real-time position feedback.
-> - **Tiered Quality Memory Architecture**: Dynamic hot in-prompt memory capping paired with permanent on-disk archives (`data/memory/archive/BACKLOG_ARCHIVE.md`) and `/compact` command.
-> - **Rigorous Dual Verification Suite**: Automated positive and negative test coverage across memory tiering, steering, queueing, chat quoting, modular gateway, and Jev service (**81 passing unit tests**).
+> **Release v1.7.0 Highlights:**
+> - **Dynamic Model Selection & 4-Tier Workload Routing**: Intelligent pre-dispatch evaluation via Jev AI System-One that routes prompts across 4 cost-calibrated Antigravity tiers (`gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`).
+> - **Dynamic Reasoning Effort & Fast-Path Context**: Automatic effort scaling (`low`, `medium`, `high`) and fast-path conversational prompt slimming (~800 tokens, 0 thinking tokens) for trivial chat.
+> - **Interactive Terminal UI Dashboard (`./run.sh monitor`)**: Live visual monitoring dashboard displaying active turns, chosen models, reasoning effort, queue depth, and reflex telemetry.
+> - **Telegram `/model` Command & Alias Support**: Inspect active models and runtime switch tiers on the fly (`/model 3.6`, `/model 3.7`, `/model 3.8`, `/model pro`).
+> - **TypeSafe AI (Jev) System-One Primitives**: Decoupled, modular integration package (`gemini_hermes/jev/`) providing smart `/btw` sidecar intent classification and reflex decision engine.
+> - **100% Optional Strict 2-World Architecture**: Standard `./run.sh start` operates with zero external dependencies; accelerated `./run.sh start-jev` activates dynamic model & effort selection.
+> - **Expanded Dual Verification Suite**: Automated test suite expanded to **123 passing unit & integration tests** (100% pass rate).
 
 ---
 
@@ -115,7 +114,6 @@ flowchart TD
   - `/memory_add <text>`, `/task_add <task>`, `/ref_add <title> | <url>`, `/memory_reset`.
 
 ### 10. Deliberate Cadence & Rigorous Dual Verification
-
 - **Slow is Smooth, Smooth is Fast**: Rejects rushed, unverified code changes that create debugging debt.
 - **Dual Verification**: Every feature or procedure must pass both positive (happy path) and negative (error boundary and fallback) testing.
 - **5-Phase Skill Creation Pipeline**:
@@ -124,6 +122,19 @@ flowchart TD
   3. **Phase 3: Incremental Draft & Review** — Draft specification in digestible sections conforming to the `agentskills.io` standard.
   4. **Phase 4: Positive & Negative Stress Testing** — Simulate and verify happy-path and error recovery behaviors.
   5. **Phase 5: Catalog Registration & Packaging** — Commit to the active skill catalog only after rigorous verification.
+
+### 11. Dynamic Model Selection & 4-Tier Workload Routing
+- **Pre-Dispatch Reflex Triage**: Inbound prompts are evaluated by **Jev AI System-One** to select the most cost-effective Antigravity model and reasoning effort before dispatching to `agy`:
+  * **Tier 1 (`gemini-3.6-flash`, `low` effort)**: Cheapest / fastest for simple interaction, greetings, smalltalk, and casual chat (0 thinking tokens on fast reflex).
+  * **Tier 2 (`gemini-3.7-flash`, `medium` effort)**: Balanced for standard coding, single-file edits, and moderate debugging.
+  * **Tier 3 (`gemini-3.8-flash`, `high` effort)**: High-workload multi-file architecture, complex refactoring, and deep agentic runs.
+  * **Tier 4 (`gemini-3.1-pro`, `high` effort)**: Extreme algorithmic reasoning and formal mathematical logic.
+- **Telegram `/model` Command**: Inspect active models, view tier pricing breakdowns, and manually switch models on the fly (`/model 3.6`, `/model 3.7`, `/model 3.8`, `/model pro`).
+
+### 12. Interactive Terminal UI Dashboard (`./run.sh monitor`)
+- **Real-Time Visual Telemetry**: Monitor the active agent daemon directly in your terminal using a rich layout dashboard.
+- **Live Metrics**: Displays daemon status, active Telegram chat ID, task previews, running time, selected model, reasoning effort, fast-path tags, task queue depth, and Jev reflex latency.
+- **Commands**: `./run.sh monitor`.
 
 ---
 
@@ -218,18 +229,28 @@ Run the comprehensive test suite to verify connectivity and environment readines
 
 ### Step 3: Run Gemini-Hermes
 
-**Daemon Mode (Recommended):**
+**Daemon Mode (Standard Engine):**
 ```bash
 ./run.sh background
 ```
-- Live logs: `./run.sh logs`
-- Status: `./run.sh status`
-- Stop: `./run.sh stop`
-- Safe Restart: `bash restart_bot.sh`
+
+**Daemon Mode with Jev Dynamic Model & Effort (Accelerated):**
+```bash
+./run.sh background-jev
+```
 
 **Interactive Foreground Mode:**
 ```bash
-./run.sh start
+./run.sh start        # Standard pure engine
+./run.sh start-jev    # Jev Dynamic Model & Effort Selector
+```
+
+**Live Dashboard & Logs:**
+```bash
+./run.sh monitor      # Interactive Terminal UI Dashboard
+./run.sh logs         # Follow live logs
+./run.sh status       # Check daemon PID and status
+./run.sh stop         # Gracefully stop daemon
 ```
 
 ---
@@ -242,20 +263,28 @@ agy-hermes/
 ├── CHANGELOG.md                   # Semantic version history and release logs
 ├── requirements.txt               # Core Python dependencies (lean & zero-dependency storage)
 ├── requirements-jev.txt           # Optional TypeSafe AI (Jev) dependencies
-├── run.sh                         # CLI service management script (setup, config, test, start)
+├── run.sh                         # CLI service management script (setup, config, test, start, monitor)
 ├── restart_bot.sh                 # Graceful lifecycle-aware daemon reloader
 ├── .env.example                   # Environment configuration template
 ├── scripts/
-│   └── test_typesafe_live.py      # Standalone live TypeSafe AI primitive test harness
+│   ├── test_typesafe_live.py      # Standalone live TypeSafe AI primitive test harness
+│   └── test_jev_reflex_prefilter.py # Live reflex prefilter tester
 ├── gemini_hermes/
-│   ├── __init__.py                # Package definition
-│   ├── config.py                  # Settings loader & path constants (v1.6.0)
-│   ├── cli.py                     # CLI commands (start, setup, config, test, status)
+│   ├── __init__.py                # Package definition (v1.7.0)
+│   ├── config.py                  # Settings loader & path constants (v1.7.0)
+│   ├── cli.py                     # CLI commands (start, setup, config, test, monitor, status)
+│   ├── cli_monitor.py             # Interactive Terminal UI Dashboard
+│   ├── telemetry.py               # Zero-locking shared telemetry exporter
 │   ├── brain/
-│   │   ├── agy_forwarder.py       # Proxy forwarder to Antigravity CLI
+│   │   ├── agy_forwarder.py       # Proxy forwarder to Antigravity CLI (--model & --effort)
 │   │   └── stream_parser.py       # NDJSON stream and tool event parser
+│   ├── jev/                       # Decoupled Jev AI System-One modular package
+│   │   ├── client.py              # TypeSafe AI reflex client & decision primitives
+│   │   ├── effort_selector.py     # 4-tier dynamic model & reasoning effort selector
+│   │   ├── btw_classifier.py      # Smart /btw sidecar intent classifier
+│   │   └── adapter.py             # Unified facade for accelerated runtime
 │   ├── services/
-│   │   └── jev_service.py         # Optional TypeSafe AI Jev System-One service shell
+│   │   └── jev_service.py         # Backward-compatible Jev service wrapper
 │   ├── projects/
 │   │   ├── __init__.py
 │   │   └── manager.py             # Project state indexing & task tracking
@@ -270,13 +299,13 @@ agy-hermes/
 │   │   └── system_prompt.py       # Cognitive depth & prompt builder
 │   └── gateway/
 │       ├── telegram_bot.py        # Gateway bot facade
-│       ├── runner.py              # Turn lifecycle & streaming execution runner
+│       ├── runner.py              # Turn lifecycle, streaming, and status runner
 │       ├── models.py              # Gateway data models (QueuedTask)
-│       ├── handlers/              # Modular command & lifecycle handlers
-│       ├── helpers/               # Context parsing & intent classification
+│       ├── handlers/              # Modular command & lifecycle handlers (/model, /steer, /btw, /queue)
+│       ├── helpers/               # Context parsing & reply extraction
 │       ├── services/              # Telegram HTTP transport client
 │       └── formatter.py           # Telegram Markdown formatting & sanitizers
-├── tests/                         # Dual verification test suites (81 tests)
+├── tests/                         # Dual verification test suites (123 tests)
 └── data/
     ├── memory/                    # MEMORY.md, USER.md, BACKLOG.md, REFERENCES.md
     │   └── archive/               # Warm memory archives (BACKLOG_ARCHIVE.md)

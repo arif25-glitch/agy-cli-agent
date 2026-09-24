@@ -312,10 +312,11 @@ async def start_bot(jev: bool = False):
         print("Please run setup first: python3 -m gemini_hermes.cli setup")
         sys.exit(1)
 
-    if jev or os.environ.get("JEV_DYNAMIC_EFFORT", "").lower() in ("true", "1", "yes"):
+    if jev or os.environ.get("JEV_DYNAMIC_EFFORT", "").lower() in ("true", "1", "yes") or os.environ.get("JEV_DYNAMIC_MODEL", "").lower() in ("true", "1", "yes"):
         config.jev_enabled = True
         config.jev_dynamic_effort = True
-        print("⚡ Jev AI System-One Dynamic Reasoning Effort Selector: ENABLED")
+        config.jev_dynamic_model = True
+        print("⚡ Jev AI System-One Dynamic Model & Effort Selector: ENABLED")
 
     if not acquire_pid_lock():
         sys.exit(1)

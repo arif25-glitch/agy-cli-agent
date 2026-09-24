@@ -64,9 +64,10 @@ case "$1" in
         exec $PYTHON_BIN -m gemini_hermes.cli start
         ;;
     start-jev)
-        echo "Starting Gemini-Hermes with Jev AI Dynamic Reasoning Effort Selector..."
+        echo "Starting Gemini-Hermes with Jev AI Dynamic Model & Effort Selector..."
         export JEV_ENABLED=true
         export JEV_DYNAMIC_EFFORT=true
+        export JEV_DYNAMIC_MODEL=true
         exec $PYTHON_BIN -m gemini_hermes.cli start --jev
         ;;
     background)
@@ -85,9 +86,10 @@ case "$1" in
             echo "⚠️ Gemini-Hermes is already running (PID: $(cat "$PID_FILE"))"
             exit 0
         fi
-        echo "Starting Gemini-Hermes with Jev AI Dynamic Reasoning Effort in background..."
+        echo "Starting Gemini-Hermes with Jev AI Dynamic Model & Effort in background..."
         export JEV_ENABLED=true
         export JEV_DYNAMIC_EFFORT=true
+        export JEV_DYNAMIC_MODEL=true
         nohup $PYTHON_BIN -m gemini_hermes.cli start --jev >> "$LOG_FILE" 2>&1 &
         echo $! > "$PID_FILE"
         echo "✅ Gemini-Hermes (Jev enabled) started in background with PID: $(cat "$PID_FILE")"

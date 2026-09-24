@@ -21,9 +21,11 @@ class AgyForwarder:
         agy_bin: Optional[str] = None,
         reasoning_effort: Optional[str] = None,
         dangerously_skip_permissions: Optional[bool] = None,
+        agy_model: Optional[str] = None,
     ):
         self.agy_bin = agy_bin or config.agy_bin or shutil.which("agy") or "agy"
         self.reasoning_effort = reasoning_effort or config.reasoning_effort
+        self.agy_model = agy_model if agy_model is not None else getattr(config, "agy_model", "")
         self.dangerously_skip_permissions = (
             dangerously_skip_permissions
             if dangerously_skip_permissions is not None
@@ -36,9 +38,11 @@ class AgyForwarder:
         conversation_id: Optional[str] = None,
         timeout: Optional[float] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> list:
         total_timeout = int(timeout or getattr(config, "forwarder_timeout", 900.0))
         chosen_effort = effort or self.reasoning_effort
+        chosen_model = model if model is not None else self.agy_model
         cmd = [
             self.agy_bin,
             "-p",
@@ -50,6 +54,8 @@ class AgyForwarder:
             "--print-timeout",
             f"{total_timeout}s",
         ]
+        if chosen_model:
+            cmd.extend(["--model", chosen_model])
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
         if conversation_id:
@@ -122,11 +128,22 @@ class AgyForwarder:
         conversation_id: Optional[str] = None,
         timeout: Optional[float] = None,
         effort: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> AsyncGenerator[Union[TokenDelta, ThinkingDelta, ToolExecutionUpdate, ForwarderResult], None]:
         max_total_timeout = timeout or getattr(config, "forwarder_timeout", 900.0)
-        cmd = self._build_command(prompt, conversation_id, timeout=max_total_timeout, effort=effort)
         chosen_effort = effort or self.reasoning_effort
-        logger.info(f"Forwarding prompt to agy CLI (conv_id={conversation_id}, effort={chosen_effort}, timeout={max_total_timeout}s)...")
+        chosen_model = model if model is not None else self.agy_model
+        cmd = self._build_command(
+            prompt,
+            conversation_id,
+            timeout=max_total_timeout,
+            effort=chosen_effort,
+            model=chosen_model,
+        )
+        logger.info(
+            f"Forwarding prompt to agy CLI (conv_id={conversation_id}, model={chosen_model or 'default'}, "
+            f"effort={chosen_effort}, timeout={max_total_timeout}s)..."
+        )
 
         inactivity_timeout = getattr(config, "inactivity_timeout", 300.0)
         start_time = asyncio.get_event_loop().time()
@@ -261,11 +278,13 @@ class AgyForwarder:
                     error=str(e),
                 )
 
-    async def ask_quick(self, prompt: str, timeout: float = 35.0) -> str:
+    async def ask_quick(self, prompt: str, timeout: float = 35.0, model: Optional[str] = None) -> str:
         """
         Executes a fast, one-shot, tool-free ephemeral query via agy CLI.
         Used for /btw side questions without polluting conversation history.
+        Defaults to gemini-3.6-flash for rapid, cost-efficient answers.
         """
+        quick_model = model or getattr(config, "agy_quick_model", "gemini-3.6-flash")
         cmd = [
             self.agy_bin,
             "-p",
@@ -273,6 +292,8 @@ class AgyForwarder:
             "--effort",
             "low",
         ]
+        if quick_model:
+            cmd.extend(["--model", quick_model])
         if self.dangerously_skip_permissions:
             cmd.append("--dangerously-skip-permissions")
 

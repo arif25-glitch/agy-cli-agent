@@ -27,6 +27,7 @@ from gemini_hermes.gateway.handlers import (
     handle_help,
     handle_status,
     handle_exec,
+    handle_model,
     handle_memory,
     handle_compact,
     handle_memory_add,
@@ -404,6 +405,8 @@ class TelegramBot(TelegramClient):
                 await handle_cancel(self, chat_id)
             elif cmd == "/status":
                 await self.handle_status(chat_id)
+            elif cmd == "/model":
+                await handle_model(self, chat_id, arg)
             elif cmd == "/memory":
                 await self.handle_memory(chat_id)
             elif cmd == "/compact":

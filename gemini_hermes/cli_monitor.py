@@ -85,6 +85,8 @@ class CliMonitor:
 
         table.add_row("Execution Engine:", "Google Antigravity CLI (agy)")
         table.add_row("Architecture:", "Dual-World Decoupled (Pure Core & Jev)")
+        current_model = state.get("selected_model") or getattr(config, "agy_model", "gemini-3.7-flash")
+        table.add_row("Active Model:", f"[bold cyan]{current_model}[/bold cyan]")
         table.add_row("Configured Effort:", f"{config.reasoning_effort.upper()} (Default)")
 
         active_chat = state.get("active_chat_id")
@@ -144,7 +146,8 @@ class CliMonitor:
         if preview:
             table.add_row("Ongoing Task:", f"[yellow]{preview}[/yellow]")
             fp_tag = " [bold green](Fast Reflex: 0 thinking tokens)[/bold green]" if is_fp else ""
-            table.add_row("Active Effort:", f"[bold cyan]{effort.upper()}[/bold cyan]{fp_tag}")
+            selected_model = state.get("selected_model") or getattr(config, "agy_model", "gemini-3.7-flash")
+            table.add_row("Active Model:", f"[bold cyan]{selected_model}[/bold cyan] ({effort.upper()}){fp_tag}")
             table.add_row("Elapsed Time:", f"{elapsed}s")
         else:
             table.add_row("Ongoing Task:", "[dim green]System Idle — Ready for requests[/dim green]")

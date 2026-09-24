@@ -5,6 +5,28 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-09-24
+
+### Added
+- **Dynamic Model Selection & 4-Tier Workload Routing via Jev AI System-One**:
+  * **Intelligent Workload Routing**: Inbound user prompts are evaluated prior to model dispatch, dynamically selecting both the optimal Antigravity model and reasoning effort based on cognitive complexity:
+    - **Tier 1 (`gemini-3.6-flash`, `low` effort)**: Cheapest / fastest for simple interaction, greetings, smalltalk, and casual chat (fast reflex with 0 thinking tokens).
+    - **Tier 2 (`gemini-3.7-flash`, `medium` effort)**: Balanced for standard coding, single-file edits, and moderate debugging.
+    - **Tier 3 (`gemini-3.8-flash`, `high` effort)**: High-workload multi-file architecture, complex refactoring, and deep agentic runs.
+    - **Tier 4 (`gemini-3.1-pro`, `high` effort)**: Deep algorithmic reasoning and formal mathematical logic.
+  * **Structured Reflex Primitives**: Integrated `model_tier` `Choice` primitive in `gemini_hermes/jev/client.py` and `gemini_hermes/services/jev_service.py` with calibrated complexity score thresholds in `gemini_hermes/jev/effort_selector.py`.
+- **AgyForwarder & ExecutionRunner Dynamic Execution**:
+  * `AgyForwarder._build_command` passes `--model <selected_model>` to `agy` CLI alongside `--effort <effort>`.
+  * `ExecutionRunner` decorates live Telegram status bubbles with the active model and effort tag (e.g. `💭 *Gemini-Hermes is thinking [gemini-3.8-flash] (high effort)...*` or `💭 *Gemini-Hermes is thinking [gemini-3.6-flash] (fast reflex)...*`).
+- **Telegram `/model` Command & Alias Resolution**:
+  * Added `/model` command in `gemini_hermes/gateway/handlers/system_handlers.py` to inspect active model, selection mode (Dynamic vs Static), and tier breakdown.
+  * Supported alias switching (e.g. `/model 3.6`, `/model 3.7`, `/model 3.8`, `/model pro`) with runtime forwarder updates.
+- **Terminal UI Dashboard Telemetry (`./run.sh monitor`)**:
+  * Live monitoring of dynamically selected model, reasoning effort, fast-path tags, and turn progression in `gemini_hermes/cli_monitor.py`.
+- **Dual Verification Test Suite Expansion**:
+  * Added dedicated dual-verification test suite `tests/test_dynamic_model.py` (13 positive and negative tests covering Tier 1–4 routing, Jev choice overrides, forwarder command building, runner execution, telegram commands, timeout fallbacks, API error fallbacks, and invalid models).
+  * Expanded total automated test suite to **123 passing unit & integration tests** (100% pass rate).
+
 ## [1.6.0] - 2026-09-24
 
 ### Added

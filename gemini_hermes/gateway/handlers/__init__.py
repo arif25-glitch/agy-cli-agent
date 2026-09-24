@@ -7,6 +7,7 @@ from gemini_hermes.gateway.handlers.system_handlers import (
     handle_help,
     handle_status,
     handle_exec,
+    handle_model,
 )
 from gemini_hermes.gateway.handlers.memory_handlers import (
     handle_memory,
@@ -45,6 +46,7 @@ __all__ = [
     "handle_help",
     "handle_status",
     "handle_exec",
+    "handle_model",
     "handle_memory",
     "handle_compact",
     "handle_memory_add",

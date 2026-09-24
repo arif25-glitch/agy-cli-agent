@@ -32,7 +32,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.6.0"
+    app_version: str = "1.7.0"
 
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
@@ -44,6 +44,7 @@ class Config(BaseModel):
     )
     agy_bin: str = Field(default_factory=lambda: os.environ.get("AGY_BIN", "/root/.local/bin/agy"))
     agy_token_file: str = Field(default_factory=lambda: os.environ.get("AGY_TOKEN_FILE", ""))
+    agy_model: str = Field(default_factory=lambda: os.environ.get("AGY_MODEL", "gemini-3.7-flash"))
     reasoning_effort: str = Field(default_factory=lambda: os.environ.get("REASONING_EFFORT", "medium"))
     stream_updates: bool = Field(
         default_factory=lambda: os.environ.get("STREAM_UPDATES", "true").lower() in ("true", "1", "yes")
@@ -81,6 +82,9 @@ class Config(BaseModel):
     )
     jev_dynamic_effort: bool = Field(
         default_factory=lambda: os.environ.get("JEV_DYNAMIC_EFFORT", "false").lower() in ("true", "1", "yes")
+    )
+    jev_dynamic_model: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_DYNAMIC_MODEL", "false").lower() in ("true", "1", "yes")
     )
     jev_timeout: float = Field(
         default_factory=lambda: float(os.environ.get("JEV_TIMEOUT", "3.0"))

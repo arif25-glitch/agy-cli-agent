@@ -39,6 +39,9 @@ class JevReflexDecision:
     reasoning_prob: float = 0.0
     raw_answers: Dict[str, Any] = field(default_factory=dict)
     latency_ms: float = 0.0
+    model_tier: Optional[str] = None
+    model_confidence: float = 0.0
+    recommended_model: Optional[str] = None
 
     @property
     def is_confident(self) -> bool:
@@ -274,6 +277,15 @@ class JevService:
             "needs_deep_reasoning": Noul(
                 instructions="Does this task require deep reasoning effort, code execution, or tool use?",
             ),
+            "model_tier": Choice(
+                instructions="Select the optimal model tier based on task complexity and cost efficiency.",
+                criteria={
+                    "tier_3_6_flash": "Tiny edits, simple shell commands, basic questions, greetings, smalltalk, trivial one-liners",
+                    "tier_3_7_flash": "Normal coding, moderate debugging, single file modifications, standard explanations",
+                    "tier_3_8_flash": "Complex multi-file refactoring, deep debugging, architecture, long agentic workflows",
+                    "tier_3_1_pro": "Heavy algorithmic reasoning, mathematical proofs, high-complexity logic where Flash models struggle",
+                },
+            ),
         }
 
     def _parse_reflex_response(self, response: Any, elapsed_ms: float) -> JevReflexDecision:
@@ -310,6 +322,12 @@ class JevService:
                 decision.reasoning_prob = prob
                 decision.needs_deep_reasoning = prob >= 0.5
 
+        # 4. Model Tier (Choice)
+        if "model_tier" in answers:
+            ans = answers["model_tier"]
+            decision.model_tier = getattr(ans, "choice", None)
+            decision.model_confidence = float(getattr(ans, "confidence", 0.0))
+
         return decision
 
     async def select_reasoning_effort(
@@ -340,3 +358,53 @@ class JevService:
 
         # 3. Medium: Standard balanced execution
         return "medium", decision
+
+    async def select_model_and_effort(
+        self,
+        text: str,
+        default_model: str = "gemini-3.7-flash",
+        default_effort: str = "medium",
+        timeout: Optional[float] = None,
+    ) -> Tuple[str, str, Optional[JevReflexDecision]]:
+        """
+        Dynamically determine both Antigravity model and reasoning effort based on Jev reflex evaluation.
+        Falls back to (default_model, default_effort, None) gracefully on timeout, error, or low confidence.
+        """
+        if not self.is_available:
+            return default_model, default_effort, None
+
+        decision = await self.evaluate_reflex(text, timeout=timeout)
+        if decision is None or decision.complexity_score is None:
+            return default_model, default_effort, None
+
+        # Check explicit model tier Choice if present
+        tier = getattr(decision, "model_tier", None)
+        conf = getattr(decision, "model_confidence", 0.0)
+        if tier and conf >= 0.70:
+            tier_mapping = {
+                "tier_3_6_flash": ("gemini-3.6-flash", "low"),
+                "tier_3_7_flash": ("gemini-3.7-flash", "medium"),
+                "tier_3_8_flash": ("gemini-3.8-flash", "high"),
+                "tier_3_1_pro": ("gemini-3.1-pro", "high"),
+            }
+            if tier in tier_mapping:
+                model, effort = tier_mapping[tier]
+                decision.recommended_model = model
+                return model, effort, decision
+
+        # Calibrated complexity & reasoning thresholds
+        # Tier 1 (Cost-saving / fast reflex): Trivial complexity & no tools
+        if decision.complexity_score < 0.6 and not decision.needs_deep_reasoning:
+            model, effort = "gemini-3.6-flash", "low"
+        # Tier 4 (Deep / hard reasoning): Very high complexity and strong reasoning need
+        elif decision.complexity_score >= 1.85 and decision.reasoning_prob >= 0.90:
+            model, effort = "gemini-3.1-pro", "high"
+        # Tier 3 (Heavy engineering / multi-file / high workload): High complexity or tool needs
+        elif decision.complexity_score >= 1.5 or (decision.needs_deep_reasoning and decision.reasoning_prob >= 0.85):
+            model, effort = "gemini-3.8-flash", "high"
+        # Tier 2 (Standard / balanced)
+        else:
+            model, effort = "gemini-3.7-flash", "medium"
+
+        decision.recommended_model = model
+        return model, effort, decision

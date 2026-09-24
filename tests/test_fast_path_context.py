@@ -58,6 +58,7 @@ class TestFastPathConversationalContext(unittest.IsolatedAsyncioTestCase):
             typesafe_api_key="apik-test-key-mock",
             jev_enabled=True,
             jev_dynamic_effort=True,
+            jev_dynamic_model=False,
             jev_fast_path=True,
             reasoning_effort="medium",
             stream_updates=True,

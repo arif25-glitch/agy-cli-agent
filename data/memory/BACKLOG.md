@@ -2,6 +2,13 @@
 
 ## Active Tasks
 
+- [x] Dynamic Model Selection via Jev AI System-One:
+  * [x] Model tier architecture: Mapped workloads to cost-efficient Antigravity models (gemini-3.6-flash for simple/cheap with low effort, gemini-3.7-flash for balanced with medium effort, gemini-3.8-flash for higher workloads / architecture with high effort, gemini-3.1-pro for deep algorithmic reasoning).
+  * [x] Jev decision engine integration: Evaluates prompt before model dispatch via Jev System-One (`model_tier` Choice & calibrated complexity thresholds) to dynamically pick model and reasoning effort.
+  * [x] Forwarder & Runner execution: Passes `--model` to `agy` CLI in `AgyForwarder` and wired through `ExecutionRunner` with live Telegram status tagging (`[gemini-3.8-flash] (high effort)`).
+  * [x] Telegram `/model` command & telemetry: Allows inspecting/switching active model (with aliases `3.6`, `3.7`, `3.8`, `pro`), recorded in `TelemetryExporter`, and displayed live in `./run.sh monitor`.
+  * [x] Dual verification test suite: Positive and negative tests covering model routing, timeout fallback, error handling, alias switching, and runner integration (`tests/test_dynamic_model.py`).
+
 - [x] TypeSafe AI (Jev) System-One integration touchpoints:
   * [x] Modular Jev Package Architecture: Encapsulated all Jev capabilities into `gemini_hermes/jev/` (`client.py`, `effort_selector.py`, `btw_classifier.py`, `adapter.py`) preserving strict 2-world isolation between `./run.sh start` and `./run.sh start-jev`.
   * [x] Inbound Telegram reflex pre-filtering: Tested and verified live with Jev AI (`scripts/test_jev_reflex_prefilter.py` & `tests/test_jev_reflex_prefilter.py`). Achieved 100% accuracy across 6 test categories with ~661ms reflex latency.
@@ -18,10 +25,10 @@
 - *(Historical completed milestones archived in `data/memory/archive/BACKLOG_ARCHIVE.md`)*
 
 ## Operational Notes & Inquiries
-- Production Release `v1.6.0` updated: All Jev AI features live in self-contained `gemini_hermes/jev/` module.
+- Production Release `v1.7.0` updated: Dynamic Model Selection enabled alongside Dynamic Reasoning Effort and Fast-Path context.
 - Strict 2-world boundary maintained:
-  * Standard `./run.sh start`: 100% pure engine execution, pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
-  * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic reasoning effort, fast-path context slimming, and smart `/btw` classification with graceful fallback.
-- Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry.
-- Test Suite: All 110 tests passing cleanly (`Ran 110 tests in 10.944s, OK`).
+  * Standard `./run.sh start`: 100% pure engine execution, static configured model (`config.agy_model`), pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
+  * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic model routing (3.6-flash, 3.7-flash, 3.8-flash, 3.1-pro) and dynamic reasoning effort (`low`, `medium`, `high`) with automatic graceful fallback.
+- Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry including active model.
+- Test Suite: All 123 tests passing cleanly (`Ran 123 tests in 9.473s, OK`).
 

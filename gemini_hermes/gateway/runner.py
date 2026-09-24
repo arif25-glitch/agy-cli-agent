@@ -51,21 +51,34 @@ class ExecutionRunner:
         sess = bot.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
 
-        # Determine reasoning effort & fast-path eligibility (dynamic via Jev if enabled, else default)
+        # Determine reasoning effort, model & fast-path eligibility (dynamic via Jev if enabled, else default)
         selected_effort = config.reasoning_effort
+        selected_model = getattr(config, "agy_model", "gemini-3.7-flash")
         is_fast_path = False
         effort_label = ""
-        if getattr(config, "jev_enabled", False) and getattr(config, "jev_dynamic_effort", False):
+        decision_val = None
+        if getattr(config, "jev_enabled", False) and (
+            getattr(config, "jev_dynamic_effort", False) or getattr(config, "jev_dynamic_model", False)
+        ):
             jev_adapter = getattr(bot, "jev_adapter", None) or getattr(bot, "jev_service", None)
             if jev_adapter and getattr(jev_adapter, "is_available", False):
                 try:
-                    selected_effort, decision = await jev_adapter.select_reasoning_effort(
-                        user_text,
-                        default_effort=config.reasoning_effort,
-                        timeout=getattr(config, "jev_timeout", 3.0),
-                    )
+                    if hasattr(jev_adapter, "select_model_and_effort"):
+                        selected_model, selected_effort, decision = await jev_adapter.select_model_and_effort(
+                            user_text,
+                            default_model=selected_model,
+                            default_effort=selected_effort,
+                            timeout=getattr(config, "jev_timeout", 3.0),
+                        )
+                    else:
+                        selected_effort, decision = await jev_adapter.select_reasoning_effort(
+                            user_text,
+                            default_effort=config.reasoning_effort,
+                            timeout=getattr(config, "jev_timeout", 3.0),
+                        )
                     if decision:
                         # Check fast-path eligibility: low effort, casual chat intent, no deep reasoning/tools
+                        model_tag = f" [{selected_model}]" if getattr(config, "jev_dynamic_model", False) else ""
                         if (
                             getattr(config, "jev_fast_path", True)
                             and selected_effort == "low"
@@ -73,21 +86,23 @@ class ExecutionRunner:
                             and not getattr(decision, "needs_deep_reasoning", False)
                         ):
                             is_fast_path = True
-                            effort_label = " (fast reflex)"
+                            effort_label = f"{model_tag} (fast reflex)"
                             logger.info(
                                 f"Jev fast-path conversational context selected for chat_id={chat_id} "
-                                f"(latency={decision.latency_ms:.1f}ms)"
+                                f"(model={selected_model}, latency={decision.latency_ms:.1f}ms)"
                             )
                         else:
-                            effort_label = f" ({selected_effort} effort)"
+                            effort_label = f"{model_tag} ({selected_effort} effort)"
                             logger.info(
-                                f"Jev dynamic effort selected: '{selected_effort}' for chat_id={chat_id} "
+                                f"Jev dynamic selection: model='{selected_model}', effort='{selected_effort}' for chat_id={chat_id} "
                                 f"(complexity={decision.complexity_score:.2f}, "
                                 f"deep_reasoning={decision.needs_deep_reasoning}, latency={decision.latency_ms:.1f}ms)"
                             )
                     decision_val = decision
                 except Exception as e:
-                    logger.warning(f"Jev dynamic effort evaluation failed: {e}. Using default '{selected_effort}'")
+                    logger.warning(
+                        f"Jev dynamic selection failed: {e}. Using default model '{selected_model}' and effort '{selected_effort}'"
+                    )
 
         # Record active turn telemetry
         q_items = [str(t) for t in bot._task_queues.get(chat_id, [])]
@@ -98,14 +113,15 @@ class ExecutionRunner:
             active_task_preview=user_text[:80],
             active_task_elapsed=0.0,
             active_step="Initializing turn",
+            selected_model=selected_model,
             reasoning_effort=selected_effort,
             is_fast_path=is_fast_path,
             queue_depth=len(q_items),
             queue_items=q_items,
             jev_enabled=getattr(config, "jev_enabled", False),
-            jev_latency_ms=getattr(decision_val, "latency_ms", None) if 'decision_val' in locals() and decision_val else None,
-            jev_complexity=getattr(decision_val, "complexity_score", None) if 'decision_val' in locals() and decision_val else None,
-            jev_decision=selected_effort if 'decision_val' in locals() and decision_val else None,
+            jev_latency_ms=getattr(decision_val, "latency_ms", None) if decision_val else None,
+            jev_complexity=getattr(decision_val, "complexity_score", None) if decision_val else None,
+            jev_decision=f"{selected_model}:{selected_effort}" if decision_val else None,
         )
 
 
@@ -190,9 +206,14 @@ class ExecutionRunner:
 
         try:
             try:
-                stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id, effort=selected_effort)
+                stream_gen = bot.forwarder.forward_stream(
+                    full_prompt, conv_id, effort=selected_effort, model=selected_model
+                )
             except TypeError:
-                stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id)
+                try:
+                    stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id, effort=selected_effort)
+                except TypeError:
+                    stream_gen = bot.forwarder.forward_stream(full_prompt, conv_id)
 
             async for event in stream_gen:
                 if isinstance(event, TokenDelta):

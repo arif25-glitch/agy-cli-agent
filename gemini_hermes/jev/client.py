@@ -37,6 +37,9 @@ class JevReflexDecision:
     reasoning_prob: float = 0.0
     raw_answers: Dict[str, Any] = field(default_factory=dict)
     latency_ms: float = 0.0
+    model_tier: Optional[str] = None
+    model_confidence: float = 0.0
+    recommended_model: Optional[str] = None
 
     @property
     def is_confident(self) -> bool:
@@ -180,6 +183,15 @@ class JevClient:
             "needs_deep_reasoning": Noul(
                 instructions="Does this task require deep reasoning effort, code execution, or tool use?",
             ),
+            "model_tier": Choice(
+                instructions="Select the optimal model tier based on task complexity and cost efficiency.",
+                criteria={
+                    "tier_3_6_flash": "Tiny edits, simple shell commands, basic questions, greetings, smalltalk, trivial one-liners",
+                    "tier_3_7_flash": "Normal coding, moderate debugging, single file modifications, standard explanations",
+                    "tier_3_8_flash": "Complex multi-file refactoring, deep debugging, architecture, long agentic workflows",
+                    "tier_3_1_pro": "Heavy algorithmic reasoning, mathematical proofs, high-complexity logic where Flash models struggle",
+                },
+            ),
         }
 
     def _parse_reflex_response(self, response: Any, elapsed_ms: float) -> JevReflexDecision:
@@ -215,5 +227,11 @@ class JevClient:
                 prob = float(prob_val)
                 decision.reasoning_prob = prob
                 decision.needs_deep_reasoning = prob >= 0.5
+
+        # 4. Model Tier (Choice)
+        if "model_tier" in answers:
+            ans = answers["model_tier"]
+            decision.model_tier = getattr(ans, "choice", None)
+            decision.model_confidence = float(getattr(ans, "confidence", 0.0))
 
         return decision

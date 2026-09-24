@@ -123,3 +123,79 @@ async def handle_exec(bot: Any, chat_id: int, command: str):
         await bot.send_message(chat_id, result)
 
 
+AVAILABLE_AGY_MODELS = [
+    "gemini-3.6-flash",
+    "gemini-3.7-flash",
+    "gemini-3.8-flash",
+    "gemini-3.1-pro",
+    "claude-sonnet-4-6",
+    "claude-opus-4-6-thinking",
+    "gpt-oss-120b-medium",
+]
+
+
+async def handle_model(bot: Any, chat_id: int, arg: str = ""):
+    raw_arg = arg.strip().lower()
+    if not raw_arg:
+        is_dynamic = getattr(config, "jev_dynamic_model", False) or getattr(config, "jev_enabled", False)
+        status_mode = "⚡ Dynamic (Jev AI System-One Decision Machine)" if is_dynamic else "🔒 Static Manual"
+        current_model = getattr(config, "agy_model", "gemini-3.7-flash")
+
+        msg = (
+            f"🧠 *Antigravity Model Selection:*\n\n"
+            f"• *Active Default Model:* `{current_model}`\n"
+            f"• *Selection Mode:* {status_mode}\n"
+            f"• *Reasoning Effort:* `{config.reasoning_effort.upper()}`\n\n"
+            f"📋 *Cost & Workload Tiers:*\n"
+            f"• `gemini-3.6-flash` — ⚡ *Tier 1 (Cheapest / fast)*: Simple edits, commands, basic Q&A, casual chat\n"
+            f"• `gemini-3.7-flash` — ⚖️ *Tier 2 (Balanced)*: Normal coding, moderate debugging, single-file edits\n"
+            f"• `gemini-3.8-flash` — 🚀 *Tier 3 (Heavy)*: Complex multi-file work, architecture, long agent runs\n"
+            f"• `gemini-3.1-pro` — 🔬 *Tier 4 (Hard reasoning)*: Complex algorithmic proofs, heavy logic\n\n"
+            f"💡 *To manually set model:*\n"
+            f"`/model gemini-3.6-flash`\n"
+            f"`/model gemini-3.7-flash`\n"
+            f"`/model gemini-3.8-flash`\n"
+            f"`/model gemini-3.1-pro`"
+        )
+        await bot.send_message(chat_id, msg)
+        return
+
+    alias_map = {
+        "3.6": "gemini-3.6-flash",
+        "3.6 flash": "gemini-3.6-flash",
+        "3.6-flash": "gemini-3.6-flash",
+        "gemini-3.6": "gemini-3.6-flash",
+        "3.7": "gemini-3.7-flash",
+        "3.7 flash": "gemini-3.7-flash",
+        "3.7-flash": "gemini-3.7-flash",
+        "gemini-3.7": "gemini-3.7-flash",
+        "3.8": "gemini-3.8-flash",
+        "3.8 flash": "gemini-3.8-flash",
+        "3.8-flash": "gemini-3.8-flash",
+        "gemini-3.8": "gemini-3.8-flash",
+        "3.1": "gemini-3.1-pro",
+        "3.1 pro": "gemini-3.1-pro",
+        "3.1-pro": "gemini-3.1-pro",
+        "pro": "gemini-3.1-pro",
+        "gemini-pro": "gemini-3.1-pro",
+    }
+    target_model = alias_map.get(raw_arg, raw_arg)
+    if target_model not in AVAILABLE_AGY_MODELS and not target_model.startswith("gemini-"):
+        await bot.send_message(
+            chat_id,
+            f"⚠️ Unknown model `{raw_arg}`. Available options:\n"
+            f"`gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`",
+        )
+        return
+
+    config.agy_model = target_model
+    if hasattr(bot, "forwarder") and bot.forwarder:
+        bot.forwarder.agy_model = target_model
+
+    await bot.send_message(
+        chat_id,
+        f"✅ *Active model updated to:* `{target_model}`\n"
+        f"Subsequent turns will use `{target_model}` by default.",
+    )
+
+
