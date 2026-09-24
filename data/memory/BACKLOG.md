@@ -9,6 +9,12 @@
   * [x] Fast-Path Conversational Context: Implemented and verified with dual testing (`tests/test_fast_path_context.py`). Automatically slims prompt from ~12k to ~800 tokens for casual chat, keeping user identity (`USER.md`) and setting `--effort low` with 0 thinking tokens.
   * [x] Upgraded `/btw` Sidecar Intent Classification: Integrated Jev `Choice` primitive via `gemini_hermes/jev/btw_classifier.py` and `classify_btw_intent_smart`. Verified with dual test suite (`tests/test_jev_btw_classifier.py`) covering happy paths, low confidence fallback (<0.85), timeout (>1.0s), and deterministic 0ms prefix overrides (`?`, `task:`).
 
+- [x] Interactive Terminal UI Dashboard (`./run.sh monitor`):
+  * Implemented real-time dashboard (`gemini_hermes/cli_monitor.py`) with rich layout panels.
+  * Real-time telemetry exporter (`gemini_hermes/telemetry.py`) tracking active turns, chat ID, reasoning effort, queue depth, and Jev reflex metrics with zero locking.
+  * Added `./run.sh monitor` command and integrated into CLI subcommands.
+  * Verified with dual testing (`tests/test_cli_monitor.py`) covering active daemon and offline daemon handling.
+
 - *(Historical completed milestones archived in `data/memory/archive/BACKLOG_ARCHIVE.md`)*
 
 ## Operational Notes & Inquiries
@@ -16,5 +22,6 @@
 - Strict 2-world boundary maintained:
   * Standard `./run.sh start`: 100% pure engine execution, pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
   * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic reasoning effort, fast-path context slimming, and smart `/btw` classification with graceful fallback.
-- Test Suite: All 107 tests passing cleanly (`Ran 107 tests in 11.826s, OK`).
+- Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry.
+- Test Suite: All 110 tests passing cleanly (`Ran 110 tests in 10.944s, OK`).
 

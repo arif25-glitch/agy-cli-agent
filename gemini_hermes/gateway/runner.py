@@ -3,10 +3,12 @@ Execution runner managing the turn lifecycle, streaming, tool heartbeats, and qu
 """
 import asyncio
 import logging
+import os
 import time
 from typing import Any, Optional, List
 
 from gemini_hermes.config import config
+from gemini_hermes.telemetry import TelemetryExporter
 from gemini_hermes.persona.system_prompt import build_system_prompt
 from gemini_hermes.brain.stream_parser import TokenDelta, ForwarderResult, ToolExecutionUpdate
 from gemini_hermes.gateway.formatter import (
@@ -83,8 +85,29 @@ class ExecutionRunner:
                                 f"(complexity={decision.complexity_score:.2f}, "
                                 f"deep_reasoning={decision.needs_deep_reasoning}, latency={decision.latency_ms:.1f}ms)"
                             )
+                    decision_val = decision
                 except Exception as e:
                     logger.warning(f"Jev dynamic effort evaluation failed: {e}. Using default '{selected_effort}'")
+
+        # Record active turn telemetry
+        q_items = [str(t) for t in bot._task_queues.get(chat_id, [])]
+        TelemetryExporter.record_state(
+            pid=os.getpid(),
+            is_running=True,
+            active_chat_id=chat_id,
+            active_task_preview=user_text[:80],
+            active_task_elapsed=0.0,
+            active_step="Initializing turn",
+            reasoning_effort=selected_effort,
+            is_fast_path=is_fast_path,
+            queue_depth=len(q_items),
+            queue_items=q_items,
+            jev_enabled=getattr(config, "jev_enabled", False),
+            jev_latency_ms=getattr(decision_val, "latency_ms", None) if 'decision_val' in locals() and decision_val else None,
+            jev_complexity=getattr(decision_val, "complexity_score", None) if 'decision_val' in locals() and decision_val else None,
+            jev_decision=selected_effort if 'decision_val' in locals() and decision_val else None,
+        )
+
 
         # Build prompt with Hermes cognitive persona (compact fast-path or full engineering context)
         system_prompt = build_system_prompt(
@@ -301,6 +324,22 @@ class ExecutionRunner:
                 bot._active_tasks.pop(chat_id, None)
             if not was_steered:
                 bot._active_task_info.pop(chat_id, None)
+
+            # Record idle telemetry state
+            remaining_q = [str(t) for t in bot._task_queues.get(chat_id, [])]
+            TelemetryExporter.record_state(
+                pid=os.getpid(),
+                is_running=bool(bot._active_tasks),
+                active_chat_id=chat_id if bot._active_tasks else None,
+                active_task_preview=None,
+                active_task_elapsed=0.0,
+                active_step="Idle",
+                reasoning_effort=config.reasoning_effort,
+                is_fast_path=False,
+                queue_depth=len(remaining_q),
+                queue_items=remaining_q,
+                jev_enabled=getattr(config, "jev_enabled", False),
+            )
 
             # Check if there is a queued /btw task (only if not steered)
             if not was_steered and chat_id in bot._task_queues and bot._task_queues[chat_id]:

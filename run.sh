@@ -17,7 +17,7 @@ else
 fi
 
 show_help() {
-    echo "Usage: ./run.sh {config|setup|start|start-jev|background|background-jev|stop|status|logs|test|memory|jev}"
+    echo "Usage: ./run.sh {config|setup|start|start-jev|background|background-jev|stop|status|logs|monitor|test|memory|jev}"
     echo ""
     echo "Commands:"
     echo "  config          Configure TypeSafe AI (Jev) API key & decision settings"
@@ -29,6 +29,7 @@ show_help() {
     echo "  stop            Stop the background Gemini-Hermes daemon"
     echo "  status          Check whether the daemon is running"
     echo "  logs            Follow the live log output"
+    echo "  monitor         Launch interactive live Terminal UI Dashboard"
     echo "  test            Run system diagnostics and health checks"
     echo "  memory          Inspect or update persistent memory files"
     echo "  jev             Launch interactive Jev AI reflex playground or test a prompt"
@@ -36,6 +37,10 @@ show_help() {
 }
 
 case "$1" in
+    monitor)
+        shift
+        $PYTHON_BIN -m gemini_hermes.cli monitor "$@"
+        ;;
     jev)
         shift
         $PYTHON_BIN "$SCRIPT_DIR/scripts/interactive_jev_reflex.py" "$@"

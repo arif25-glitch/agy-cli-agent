@@ -2,6 +2,7 @@
 .env
 *.env.local
 data/sessions/*.json
+data/state/
 data/media/
 
 # Logs & Runtime

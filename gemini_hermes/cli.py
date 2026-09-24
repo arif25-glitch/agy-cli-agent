@@ -384,6 +384,7 @@ def main():
     subparsers.add_parser("setup", help="Run interactive setup wizard")
     subparsers.add_parser("config", help="Configure TypeSafe AI (Jev) API key & decision settings")
     subparsers.add_parser("test", help="Run diagnostic health checks")
+    subparsers.add_parser("monitor", help="Launch interactive Terminal UI Dashboard")
 
     mem_parser = subparsers.add_parser("memory", help="Inspect or update persistent memory files")
     mem_sub = mem_parser.add_subparsers(dest="mem_action", help="Memory action")
@@ -408,12 +409,16 @@ def main():
         asyncio.run(run_setup())
     elif cmd == "test":
         asyncio.run(run_diagnostics())
+    elif cmd == "monitor":
+        from gemini_hermes.cli_monitor import run_monitor
+        run_monitor()
     elif cmd == "memory":
         run_memory_cli(args)
     elif cmd == "start":
         asyncio.run(start_bot(jev=getattr(args, "jev", False)))
     else:
         parser.print_help()
+
 
 
 if __name__ == "__main__":

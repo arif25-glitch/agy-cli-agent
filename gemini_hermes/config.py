@@ -9,6 +9,7 @@ MEMORY_DIR = DATA_DIR / "memory"
 SESSIONS_DIR = DATA_DIR / "sessions"
 SKILLS_DIR = DATA_DIR / "skills"
 PROJECTS_DIR = DATA_DIR / "projects"
+STATE_DIR = DATA_DIR / "state"
 
 
 def _load_env_file(filepath: Path):
