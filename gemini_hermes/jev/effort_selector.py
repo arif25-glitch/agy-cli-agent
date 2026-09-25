@@ -88,3 +88,20 @@ class JevEffortSelector:
             timeout=timeout,
         )
         return effort, decision
+
+    def is_fast_path_eligible(
+        self,
+        decision: Optional[JevReflexDecision],
+        selected_effort: str,
+    ) -> bool:
+        """
+        Determines if the inbound request qualifies for fast-path conversational reflex.
+        Eligible when effort is low, intent is casual/smalltalk, and no deep reasoning is needed.
+        """
+        if not decision:
+            return False
+        return bool(
+            selected_effort == "low"
+            and getattr(decision, "intent", "") in ("casual_chat", "smalltalk", None)
+            and not getattr(decision, "needs_deep_reasoning", False)
+        )

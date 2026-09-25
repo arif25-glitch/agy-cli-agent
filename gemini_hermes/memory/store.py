@@ -15,7 +15,7 @@ from gemini_hermes.memory.templates import (
     DEFAULT_REFERENCES_TEMPLATE,
 )
 from gemini_hermes.memory.session_store import SessionStore
-from gemini_hermes.memory.archiver import BacklogArchiver
+from gemini_hermes.memory.archiver import BacklogArchiver, MemoryNotesArchiver, MemoryPruner
 
 logger = logging.getLogger("gemini-hermes.memory")
 
@@ -38,6 +38,7 @@ class MemoryStore:
         self.references_file = self.memory_dir / "REFERENCES.md"
         self.archive_dir = self.memory_dir / "archive"
         self.backlog_archive_file = self.archive_dir / "BACKLOG_ARCHIVE.md"
+        self.memory_archive_file = self.archive_dir / "MEMORY_ARCHIVE.md"
 
         self.session_store = SessionStore(sessions_dir=self.sessions_dir)
         self.sessions_file = self.session_store.sessions_file
@@ -186,6 +187,11 @@ class MemoryStore:
             return self.backlog_archive_file.read_text(encoding="utf-8")
         return ""
 
+    def get_archived_memory_notes(self) -> str:
+        if self.memory_archive_file.exists():
+            return self.memory_archive_file.read_text(encoding="utf-8")
+        return ""
+
     def parse_backlog_items(self, content: Optional[str] = None) -> Dict[str, Any]:
         raw = content if content is not None else self.get_backlog()
         return BacklogArchiver.parse_backlog_items(raw)
@@ -202,6 +208,57 @@ class MemoryStore:
             self.backlog_file,
             self.backlog_archive_file,
             keep_recent=keep_recent,
+        )
+
+    def archive_memory_notes(
+        self,
+        keep_recent: int = 10,
+        notes_to_archive: Optional[List[str]] = None,
+        section: str = "Key Facts & Lessons",
+    ) -> Dict[str, Any]:
+        return MemoryNotesArchiver.archive_notes(
+            self.memory_file,
+            self.memory_archive_file,
+            keep_recent=keep_recent,
+            notes_to_archive=notes_to_archive,
+            section=section,
+        )
+
+    async def autonomous_prune(
+        self,
+        jev_adapter: Optional[Any] = None,
+        keep_recent_backlog: int = 5,
+        max_notes: int = 10,
+    ) -> Dict[str, Any]:
+        """
+        Coordinates autonomous memory pruning and archiving across 2 worlds:
+        - If jev_adapter is available: invokes Jev AI for smart semantic categorization
+          (transient vs evergreen notes) with graceful automatic fallback.
+        - If jev_adapter is None or disabled: executes Pure Core deterministic pruning.
+        """
+        if jev_adapter and getattr(jev_adapter, "is_available", False):
+            try:
+                res = await jev_adapter.prune_memory(
+                    memory_file=self.memory_file,
+                    memory_archive=self.memory_archive_file,
+                    backlog_file=self.backlog_file,
+                    backlog_archive=self.backlog_archive_file,
+                    keep_recent_backlog=keep_recent_backlog,
+                    max_notes=max_notes,
+                )
+                if res:
+                    return res
+            except Exception as e:
+                logger.debug(f"Jev autonomous memory pruning fallback: {e}")
+
+        # Pure Core Deterministic fallback / default
+        return MemoryPruner.prune_all_pure(
+            backlog_file=self.backlog_file,
+            backlog_archive=self.backlog_archive_file,
+            memory_file=self.memory_file,
+            memory_archive=self.memory_archive_file,
+            keep_recent_backlog=keep_recent_backlog,
+            max_notes=max_notes,
         )
 
     # -------------------------------------------------------------------------
@@ -229,14 +286,22 @@ class MemoryStore:
         }
         refs_stat = file_stats(self.references_file)
         archive_stat = file_stats(self.backlog_archive_file)
+        mem_archive_stat = file_stats(self.memory_archive_file)
+        archived_tokens = archive_stat["tokens"] + mem_archive_stat["tokens"]
 
         hot_tokens = mem_stat["tokens"] + usr_stat["tokens"] + hot_backlog_stat["tokens"] + refs_stat["tokens"]
-        total_tokens = mem_stat["tokens"] + usr_stat["tokens"] + raw_backlog_stat["tokens"] + refs_stat["tokens"] + archive_stat["tokens"]
+        total_tokens = (
+            mem_stat["tokens"]
+            + usr_stat["tokens"]
+            + raw_backlog_stat["tokens"]
+            + refs_stat["tokens"]
+            + archived_tokens
+        )
 
         return {
             "hot_tokens": hot_tokens,
             "total_tokens": total_tokens,
-            "archived_tokens": archive_stat["tokens"],
+            "archived_tokens": archived_tokens,
             "files": {
                 "MEMORY.md": mem_stat,
                 "USER.md": usr_stat,
@@ -244,6 +309,7 @@ class MemoryStore:
                 "BACKLOG.md (hot)": hot_backlog_stat,
                 "REFERENCES.md": refs_stat,
                 "BACKLOG_ARCHIVE.md": archive_stat,
+                "MEMORY_ARCHIVE.md": mem_archive_stat,
             },
         }
 

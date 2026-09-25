@@ -5,6 +5,22 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.3] - 2026-09-25
+
+### Added
+- **Autonomous Memory Pruner & Archival (`gemini_hermes/jev/memory_pruner.py`, `gemini_hermes/memory/archiver.py`)**:
+  * Added autonomous memory pruning retaining the most recent active tasks and memory notes while cleanly archiving completed tasks to `data/memory/archive/BACKLOG_ARCHIVE.md`.
+  * Integrated Jev-accelerated semantic pruning with robust zero-dependency deterministic fallback.
+- **JIT Dynamic Skill Selector (`gemini_hermes/jev/skill_selector.py`)**:
+  * Implemented dynamic intent-to-skill matching that injects only relevant procedural skills per turn rather than the monolithic catalog, drastically reducing input token overhead.
+- **Context Bridge & Relative Growth Session Rotation (`gemini_hermes/memory/session_store.py`, `gemini_hermes/gateway/runner.py`)**:
+  * Implemented relative token growth and turn-based context rotation to prevent token explosion.
+  * Maintained seamless agent continuity across rotations using an automated `<context_bridge>` summary.
+- **Differential Follow-Up Prompt Architecture (`gemini_hermes/persona/system_prompt.py`)**:
+  * Optimized multi-turn conversations using lean differential prompts on follow-up turns (`turn > 0`) while maintaining strict base instructions on session initialization (`turn 0`).
+- **Comprehensive Dual Verification Test Suite**:
+  * Added dedicated test suites: `tests/test_autonomous_memory_pruning.py`, `tests/test_relative_growth_rotation.py`, and `tests/test_token_efficiency.py`, expanding the full test suite to 150 passing unit tests.
+
 ## [1.7.2] - 2026-09-25
 
 ### Added

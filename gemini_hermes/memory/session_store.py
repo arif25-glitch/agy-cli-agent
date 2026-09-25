@@ -89,6 +89,10 @@ class SessionStore:
         sess["total_input_tokens"] = sess.get("total_input_tokens", 0) + input_tokens
         sess["total_output_tokens"] = sess.get("total_output_tokens", 0) + output_tokens
 
+        sess["last_turn_input_tokens"] = input_tokens
+        if sess.get("session_baseline_tokens", 0) == 0 and input_tokens > 0:
+            sess["session_baseline_tokens"] = input_tokens
+
         sessions[key] = sess
         self._save_sessions(sessions)
 
@@ -100,9 +104,133 @@ class SessionStore:
             sessions[key]["turn_count"] = 0
             sessions[key]["session_input_tokens"] = 0
             sessions[key]["session_output_tokens"] = 0
+            sessions[key]["session_baseline_tokens"] = 0
+            sessions[key]["last_turn_input_tokens"] = 0
             sessions[key]["last_active"] = datetime.now().isoformat()
+            sessions[key].pop("context_bridge", None)
             self._save_sessions(sessions)
             logger.info(f"Reset session conversation for chat_id={chat_id}")
+
+    def should_rotate_session(
+        self,
+        chat_id: int,
+        max_tokens: int = 50000,
+        max_turns: int = 15,
+        min_turns: int = 2,
+        max_growth_tokens: int = 40000,
+        growth_ratio: float = 2.0,
+        hard_max_tokens: int = 120000,
+    ) -> bool:
+        """
+        Determines whether the active session should rotate to a fresh conversation ID
+        using dynamic relative growth calculations to prevent the rotation loop.
+
+        Guarantees:
+        - Never rotates on initial turns (< min_turns), breaking the single-turn rotation loop.
+        - Rotates if context grows beyond relative growth threshold (+max_growth_tokens) from baseline.
+        - Rotates if turn count reaches max_turns ceiling.
+        - Rotates if hard ceiling (hard_max_tokens) is breached to prevent window overflow.
+        """
+        sess = self.get_session(chat_id)
+        conv_id = sess.get("conversation_id")
+        if not conv_id:
+            return False
+
+        turns = sess.get("turn_count", 0)
+        in_tok = sess.get("session_input_tokens", 0)
+        last_tok = sess.get("last_turn_input_tokens", 0)
+        current_context = last_tok if last_tok > 0 else in_tok
+        baseline = sess.get("session_baseline_tokens", 0)
+
+        # 1. Hard ceiling safety check: if context exceeds hard_max_tokens, rotate immediately
+        if hard_max_tokens and (current_context >= hard_max_tokens or in_tok >= hard_max_tokens * 2):
+            logger.info(
+                f"Session rotation triggered: Hard token ceiling ({current_context} >= {hard_max_tokens}) for chat_id={chat_id}"
+            )
+            return True
+
+        # 2. Turn limit ceiling: if turn count reaches max_turns, rotate
+        if max_turns and turns >= max_turns:
+            logger.info(
+                f"Session rotation triggered: Max turns reached ({turns} >= {max_turns}) for chat_id={chat_id}"
+            )
+            return True
+
+        # 3. Minimum turns guardrail: do NOT rotate on initial turns (< min_turns)
+        # This fundamentally breaks the single-turn Rotation Loop when base context is large!
+        if turns < min_turns:
+            return False
+
+        # 4. Relative growth check (measured against initial session baseline)
+        if baseline > 0:
+            growth = max(0, current_context - baseline)
+            if max_growth_tokens and growth >= max_growth_tokens:
+                logger.info(
+                    f"Session rotation triggered: Relative token growth ({growth} >= {max_growth_tokens}) for chat_id={chat_id}"
+                )
+                return True
+            if (
+                growth_ratio
+                and (current_context / baseline) >= growth_ratio
+                and (current_context >= max_tokens or in_tok >= max_tokens)
+            ):
+                logger.info(
+                    f"Session rotation triggered: Growth ratio ({current_context / baseline:.2f} >= {growth_ratio}) for chat_id={chat_id}"
+                )
+                return True
+
+        # 5. Standard fallback threshold (if baseline is 0 / unrecorded)
+        if not baseline and max_tokens and (current_context >= max_tokens or in_tok >= max_tokens):
+            logger.info(
+                f"Session rotation triggered: Token ceiling ({current_context} >= {max_tokens}) for chat_id={chat_id}"
+            )
+            return True
+
+        return False
+
+    def rotate_session_with_bridge(
+        self,
+        chat_id: int,
+        bridge_summary: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        Rotates an active session to a fresh conversation ID, preserving lifetime token metrics
+        and storing a context bridge summary for the subsequent Turn 1.
+        """
+        sessions = self._load_sessions()
+        key = str(chat_id)
+        sess = sessions.get(key, {})
+        old_conv = sess.get("conversation_id")
+        old_tokens = sess.get("session_input_tokens", 0)
+        old_turns = sess.get("turn_count", 0)
+
+        sess["conversation_id"] = None
+        sess["turn_count"] = 0
+        sess["session_input_tokens"] = 0
+        sess["session_output_tokens"] = 0
+        sess["session_baseline_tokens"] = 0
+        sess["last_turn_input_tokens"] = 0
+        sess["last_active"] = datetime.now().isoformat()
+        if bridge_summary:
+            sess["context_bridge"] = bridge_summary.strip()
+
+        sessions[key] = sess
+        self._save_sessions(sessions)
+        logger.info(
+            f"Rotated session for chat_id={chat_id} (old_conv={old_conv}, prior_tokens={old_tokens}, prior_turns={old_turns}). "
+            f"Context bridge stored."
+        )
+        return sess
+
+    def pop_context_bridge(self, chat_id: int) -> Optional[str]:
+        """Retrieve and clear pending context bridge summary for a session."""
+        sessions = self._load_sessions()
+        key = str(chat_id)
+        if key in sessions and "context_bridge" in sessions[key]:
+            bridge = sessions[key].pop("context_bridge")
+            self._save_sessions(sessions)
+            return bridge
+        return None
 
     def get_total_token_usage(self) -> Dict[str, Any]:
         """Calculates aggregate token usage and turn metrics across all tracked sessions."""

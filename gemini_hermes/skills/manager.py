@@ -127,10 +127,17 @@ class SkillManager:
             file_path=file_path,
         )
 
-    def render_skills_summary(self) -> str:
+    def render_skills_summary(self, skills_subset: Optional[List[str]] = None) -> str:
         skills = self.get_all_skills()
         if not skills:
             return "No skills currently registered."
+
+        if skills_subset is not None:
+            if not skills_subset:
+                return ""  # Explicitly empty subset means 0 skills injected
+            skills = {k: v for k, v in skills.items() if k in skills_subset}
+            if not skills:
+                return ""
 
         lines = ["## Available Skills (Modular Procedures)"]
         for s in skills.values():

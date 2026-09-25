@@ -25,24 +25,41 @@ async def handle_memory(bot: Any, chat_id: int):
 
 
 async def handle_compact(bot: Any, chat_id: int):
-    res = bot.memory_store.archive_completed_backlog(keep_recent=5)
-    stats = bot.memory_store.get_memory_stats()
+    jev_adapter = getattr(bot, "jev_adapter", None)
+    if hasattr(bot.memory_store, "autonomous_prune"):
+        res = await bot.memory_store.autonomous_prune(
+            jev_adapter=jev_adapter,
+            keep_recent_backlog=5,
+            max_notes=10,
+        )
+    else:
+        res = bot.memory_store.archive_completed_backlog(keep_recent=5)
 
-    if res.get("status") == "archived":
+    stats = bot.memory_store.get_memory_stats()
+    mode_label = "Jev Smart Semantic" if res.get("mode") == "jev_smart" else "Pure Core Deterministic"
+
+    backlog_info = res.get("backlog", res)
+    notes_info = res.get("notes", {})
+    backlog_archived = backlog_info.get("archived_count", 0)
+    notes_archived = notes_info.get("archived_count", 0)
+
+    if res.get("status") in ("archived", "pruned"):
         text = (
-            f"🧹 *Memory Compaction & Tiering Complete*\n\n"
-            f"• *Archived Completed Tasks:* `{res['archived_count']}` (migrated to warm archive)\n"
-            f"• *Recent Completed in Hot Context:* `{res['retained_count']}`\n"
-            f"• *Active Tasks Kept:* `{res['active_count']}`\n"
+            f"🧹 *Memory Compaction & Tiering Complete ({mode_label})*\n\n"
+            f"• *Archived Completed Tasks:* `{backlog_archived}` (migrated to `BACKLOG_ARCHIVE.md`)\n"
+            f"• *Archived Stale Notes/Lessons:* `{notes_archived}` (migrated to `MEMORY_ARCHIVE.md`)\n"
+            f"• *Recent Completed in Hot Context:* `{backlog_info.get('retained_count', 0)}`\n"
+            f"• *Active Tasks Kept:* `{backlog_info.get('active_count', 0)}`\n"
             f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
             f"• *Total Memory Preserved on Disk:* ~`{stats['total_tokens']:,}` tokens\n"
-            f"• *Archive Location:* `data/memory/archive/BACKLOG_ARCHIVE.md`"
+            f"• *Archive Location:* `data/memory/archive/`"
         )
     else:
         text = (
-            f"✨ *Memory is Already Compact & Sharp*\n\n"
-            f"• *Completed Tasks in Backlog:* `{res.get('retained_count', 0)}` (under threshold of 5)\n"
-            f"• *Active Tasks:* `{res.get('active_count', 0)}`\n"
+            f"✨ *Memory is Already Compact & Sharp ({mode_label})*\n\n"
+            f"• *Completed Tasks in Backlog:* `{backlog_info.get('retained_count', 0)}` (under threshold of 5)\n"
+            f"• *Active Tasks:* `{backlog_info.get('active_count', 0)}`\n"
+            f"• *Memory Notes in Hot Context:* `{notes_info.get('retained_count', 0)}` (under threshold of 10)\n"
             f"• *Current Hot Memory Footprint:* ~`{stats['hot_tokens']:,}` tokens\n"
             f"• *Archived Off-Prompt Tokens:* ~`{stats['archived_tokens']:,}` tokens\n"
             f"No archiving was needed."

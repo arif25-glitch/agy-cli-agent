@@ -32,7 +32,7 @@ _load_env_file(BASE_DIR / ".env")
 
 
 class Config(BaseModel):
-    app_version: str = "1.7.2"
+    app_version: str = "1.7.3"
 
     bot_token: str = Field(default_factory=lambda: os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     allowed_users: List[int] = Field(
@@ -65,6 +65,39 @@ class Config(BaseModel):
     status_notify_interval: float = Field(
         default_factory=lambda: float(os.environ.get("STATUS_NOTIFY_INTERVAL", "1.2"))
     )
+    differential_prompts: bool = Field(
+        default_factory=lambda: os.environ.get("DIFFERENTIAL_PROMPTS", "true").lower() in ("true", "1", "yes")
+    )
+    context_rotation_threshold_tokens: int = Field(
+        default_factory=lambda: int(os.environ.get("CONTEXT_ROTATION_THRESHOLD_TOKENS", "50000"))
+    )
+    context_rotation_growth_tokens: int = Field(
+        default_factory=lambda: int(os.environ.get("CONTEXT_ROTATION_GROWTH_TOKENS", "40000"))
+    )
+    context_rotation_turn_limit: int = Field(
+        default_factory=lambda: int(os.environ.get("CONTEXT_ROTATION_TURN_LIMIT", "15"))
+    )
+    context_rotation_min_turns: int = Field(
+        default_factory=lambda: int(os.environ.get("CONTEXT_ROTATION_MIN_TURNS", "2"))
+    )
+    context_rotation_hard_max_tokens: int = Field(
+        default_factory=lambda: int(os.environ.get("CONTEXT_ROTATION_HARD_MAX_TOKENS", "120000"))
+    )
+    context_rotation_growth_ratio: float = Field(
+        default_factory=lambda: float(os.environ.get("CONTEXT_ROTATION_GROWTH_RATIO", "2.0"))
+    )
+    autonomous_memory_pruning: bool = Field(
+        default_factory=lambda: os.environ.get("AUTONOMOUS_MEMORY_PRUNING", "true").lower() in ("true", "1", "yes")
+    )
+    memory_pruning_backlog_keep: int = Field(
+        default_factory=lambda: int(os.environ.get("MEMORY_PRUNING_BACKLOG_KEEP", "5"))
+    )
+    memory_pruning_notes_keep: int = Field(
+        default_factory=lambda: int(os.environ.get("MEMORY_PRUNING_NOTES_KEEP", "10"))
+    )
+    jev_memory_pruning: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_MEMORY_PRUNING", "true").lower() in ("true", "1", "yes")
+    )
     typesafe_api_key: str = Field(
         default_factory=lambda: os.environ.get("TYPESAFE_API_KEY", os.environ.get("JEV_API_KEY", ""))
     )
@@ -85,6 +118,9 @@ class Config(BaseModel):
     )
     jev_dynamic_model: bool = Field(
         default_factory=lambda: os.environ.get("JEV_DYNAMIC_MODEL", "false").lower() in ("true", "1", "yes")
+    )
+    jev_jit_skills: bool = Field(
+        default_factory=lambda: os.environ.get("JEV_JIT_SKILLS", "false").lower() in ("true", "1", "yes")
     )
     jev_timeout: float = Field(
         default_factory=lambda: float(os.environ.get("JEV_TIMEOUT", "3.0"))

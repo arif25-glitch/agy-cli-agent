@@ -5,6 +5,7 @@ Verifies prompt slimming, token reduction, and automatic context escalation.
 
 import asyncio
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, Optional
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -50,9 +51,12 @@ class TestFastPathConversationalContext(unittest.IsolatedAsyncioTestCase):
     """Test suite for Fast-Path Conversational Context."""
 
     def setUp(self):
-        self.memory_store = MemoryStore()
-        self.skill_manager = SkillManager()
-        self.project_manager = ProjectManager()
+        import tempfile
+        import shutil
+        self.temp_dir = Path(tempfile.mkdtemp())
+        self.memory_store = MemoryStore(memory_dir=self.temp_dir / "memory", sessions_dir=self.temp_dir / "sessions")
+        self.skill_manager = SkillManager(custom_skills_dir=self.temp_dir / "skills")
+        self.project_manager = ProjectManager(projects_dir=self.temp_dir / "projects")
         self.config = Config(
             bot_token="123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11",
             typesafe_api_key="apik-test-key-mock",
@@ -64,6 +68,10 @@ class TestFastPathConversationalContext(unittest.IsolatedAsyncioTestCase):
             stream_updates=True,
             jev_timeout=1.5,
         )
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir, ignore_errors=True)
 
     # -------------------------------------------------------------------------
     # UNIT TESTS: PROMPT SLIMMING
@@ -142,7 +150,14 @@ class TestFastPathConversationalContext(unittest.IsolatedAsyncioTestCase):
         mock_forwarder = MagicMock()
         mock_forwarder.forward_stream = mock_forward_stream
 
-        bot = TelegramBot(token=self.config.bot_token, forwarder=mock_forwarder, jev_service=jev_svc)
+        bot = TelegramBot(
+            token=self.config.bot_token,
+            forwarder=mock_forwarder,
+            jev_service=jev_svc,
+            memory_store=self.memory_store,
+            skill_manager=self.skill_manager,
+            project_manager=self.project_manager,
+        )
         bot.send_chat_action = AsyncMock()
         bot.send_message = AsyncMock(return_value=2001)
         bot.edit_message_text = AsyncMock()
@@ -193,7 +208,14 @@ class TestFastPathConversationalContext(unittest.IsolatedAsyncioTestCase):
         mock_forwarder = MagicMock()
         mock_forwarder.forward_stream = mock_forward_stream
 
-        bot = TelegramBot(token=self.config.bot_token, forwarder=mock_forwarder, jev_service=jev_svc)
+        bot = TelegramBot(
+            token=self.config.bot_token,
+            forwarder=mock_forwarder,
+            jev_service=jev_svc,
+            memory_store=self.memory_store,
+            skill_manager=self.skill_manager,
+            project_manager=self.project_manager,
+        )
         bot.send_chat_action = AsyncMock()
         bot.send_message = AsyncMock(return_value=2002)
         bot.edit_message_text = AsyncMock()

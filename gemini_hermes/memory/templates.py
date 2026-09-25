@@ -73,3 +73,13 @@ DEFAULT_ARCHIVE_TEMPLATE = """# Archived Completed Tasks (Warm Memory)
 ## Completed Milestones & Archive
 """
 
+DEFAULT_MEMORY_ARCHIVE_TEMPLATE = """# Archived Memory Notes & Operational Lessons (Warm Memory)
+
+> [!NOTE]
+> This archive preserves historical operational facts, transient debug notes, and superseded lessons off-prompt.
+> Core directives in MEMORY.md remain lean and evergreen.
+
+## Historical Facts & Lessons Archive
+"""
+
+

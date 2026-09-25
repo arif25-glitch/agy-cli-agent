@@ -51,6 +51,34 @@ class ExecutionRunner:
         sess = bot.memory_store.get_session(chat_id)
         conv_id = sess.get("conversation_id")
 
+        # Check if session should rotate to prevent O(N^2) token explosion via relative growth
+        rotation_threshold_tokens = getattr(config, "context_rotation_threshold_tokens", 50000)
+        rotation_turn_limit = getattr(config, "context_rotation_turn_limit", 15)
+        rotation_growth_tokens = getattr(config, "context_rotation_growth_tokens", 40000)
+        rotation_min_turns = getattr(config, "context_rotation_min_turns", 2)
+        rotation_hard_max = getattr(config, "context_rotation_hard_max_tokens", 120000)
+        rotation_growth_ratio = getattr(config, "context_rotation_growth_ratio", 2.0)
+
+        if hasattr(bot.memory_store, "session_store") and hasattr(bot.memory_store.session_store, "should_rotate_session"):
+            if bot.memory_store.session_store.should_rotate_session(
+                chat_id,
+                max_tokens=rotation_threshold_tokens,
+                max_turns=rotation_turn_limit,
+                min_turns=rotation_min_turns,
+                max_growth_tokens=rotation_growth_tokens,
+                growth_ratio=rotation_growth_ratio,
+                hard_max_tokens=rotation_hard_max,
+            ):
+                bridge_summary = f"Continuing ongoing workflow. Recent context focus: {user_text[:140]}"
+                bot.memory_store.session_store.rotate_session_with_bridge(chat_id, bridge_summary=bridge_summary)
+                sess = bot.memory_store.get_session(chat_id)
+                conv_id = None
+                logger.info(f"🔄 Context Checkpoint: Rotated session for chat_id={chat_id} via relative growth to prevent token explosion.")
+
+        pending_bridge = None
+        if hasattr(bot.memory_store, "session_store") and hasattr(bot.memory_store.session_store, "pop_context_bridge"):
+            pending_bridge = bot.memory_store.session_store.pop_context_bridge(chat_id)
+
         # Determine reasoning effort, model & fast-path eligibility (dynamic via Jev if enabled, else default)
         selected_effort = config.reasoning_effort
         selected_model = getattr(config, "agy_model", "gemini-3.7-flash")
@@ -77,15 +105,19 @@ class ExecutionRunner:
                             timeout=getattr(config, "jev_timeout", 3.0),
                         )
                     if decision:
-                        # Check fast-path eligibility: low effort, casual chat intent, no deep reasoning/tools
+                        # Check fast-path eligibility via Jev module
                         model_tag = f" [{selected_model}]" if getattr(config, "jev_dynamic_model", False) else ""
-                        if (
-                            getattr(config, "jev_fast_path", True)
-                            and selected_effort == "low"
-                            and getattr(decision, "intent", "") in ("casual_chat", "smalltalk", None)
-                            and not getattr(decision, "needs_deep_reasoning", False)
-                        ):
-                            is_fast_path = True
+                        if hasattr(jev_adapter, "is_fast_path_eligible"):
+                            is_fast_path = jev_adapter.is_fast_path_eligible(decision, selected_effort)
+                        else:
+                            is_fast_path = (
+                                getattr(config, "jev_fast_path", True)
+                                and selected_effort == "low"
+                                and getattr(decision, "intent", "") in ("casual_chat", "smalltalk", None)
+                                and not getattr(decision, "needs_deep_reasoning", False)
+                            )
+
+                        if is_fast_path:
                             effort_label = f"{model_tag} (fast reflex)"
                             logger.info(
                                 f"Jev fast-path conversational context selected for chat_id={chat_id} "
@@ -128,14 +160,42 @@ class ExecutionRunner:
             global_tokens=glob_tok,
         )
 
+        # Determine JIT skills if enabled
+        skills_subset = None
+        if (
+            getattr(config, "jev_enabled", False)
+            and getattr(config, "jev_jit_skills", True)
+            and not is_fast_path
+        ):
+            jev_adapter = getattr(bot, "jev_adapter", None) or getattr(bot, "jev_service", None)
+            if jev_adapter and hasattr(jev_adapter, "select_skills") and getattr(jev_adapter, "is_available", False):
+                try:
+                    all_skills = bot.skill_manager.get_all_skills()
+                    skills_subset = await jev_adapter.select_skills(
+                        user_text, all_skills, timeout=getattr(config, "jev_timeout", 3.0)
+                    )
+                except Exception as e:
+                    logger.debug(f"Jev JIT skill selection error: {e}")
+                    skills_subset = None
 
-        # Build prompt with Hermes cognitive persona (compact fast-path or full engineering context)
+        turn_count = sess.get("turn_count", 0)
+        is_followup = bool(
+            conv_id
+            and turn_count > 0
+            and getattr(config, "differential_prompts", True)
+            and not is_fast_path
+        )
+
+        # Build prompt with Hermes cognitive persona (compact fast-path, differential follow-up, or full context)
         system_prompt = build_system_prompt(
             bot.memory_store,
             bot.skill_manager,
             project_manager=bot.project_manager,
             current_chat_id=chat_id,
             fast_path=is_fast_path,
+            is_followup=is_followup,
+            skills_subset=skills_subset,
+            context_bridge_summary=pending_bridge,
         )
         full_prompt = (
             f"{system_prompt}\n\n"
@@ -312,6 +372,22 @@ class ExecutionRunner:
                     await bot.send_message(chat_id, chunks[0], reply_to_message_id=reply_to_message_id)
                     for chunk in chunks[1:]:
                         await bot.send_message(chat_id, chunk)
+
+            # Autonomous Memory Pruning Hook (Keeps Base Context Lean across 2 Worlds)
+            if getattr(config, "autonomous_memory_pruning", True) and hasattr(bot.memory_store, "autonomous_prune"):
+                try:
+                    jev_adapter = getattr(bot, "jev_adapter", None) if getattr(config, "jev_enabled", False) else None
+                    prune_res = await bot.memory_store.autonomous_prune(
+                        jev_adapter=jev_adapter,
+                        keep_recent_backlog=getattr(config, "memory_pruning_backlog_keep", 5),
+                        max_notes=getattr(config, "memory_pruning_notes_keep", 10),
+                    )
+                    if prune_res.get("status") in ("archived", "pruned"):
+                        logger.info(
+                            f"🧹 Autonomous Memory Pruning for chat_id={chat_id}: {prune_res.get('summary', 'Pruned memory.')}"
+                        )
+                except Exception as pe:
+                    logger.debug(f"Autonomous memory pruning non-fatal error: {pe}")
 
         except asyncio.CancelledError:
             logger.info(f"Task for chat_id={chat_id} was cancelled.")

@@ -1,17 +1,13 @@
-# 🪐 Gemini-Hermes AI Agent `v1.7.2`
+# 🪐 Gemini-Hermes AI Agent `v1.7.3`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.7.2 Highlights:**
-> - **Session Token Reset & Lifetime Tracking (`/new`, `/reset`)**: Session-level token metrics (`session_input_tokens`, `session_output_tokens`) are cleanly isolated and reset upon conversation reset, while preserving historical lifetime token usage across sessions.
-> - **Session & Global Token Usage Tracking (`./run.sh monitor`)**: Real-time token usage dashboard panel capturing authoritative engine tokens per session and lifetime total across all tracked sessions.
-> - **Dynamic Model Selection & 4-Tier Workload Routing**: Intelligent pre-dispatch evaluation via Jev AI System-One that routes prompts across 4 cost-calibrated Antigravity tiers (`gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`).
-> - **Dynamic Reasoning Effort & Fast-Path Context**: Automatic effort scaling (`low`, `medium`, `high`) and fast-path conversational prompt slimming (~800 tokens, 0 thinking tokens) for trivial chat.
-> - **Interactive Terminal UI Dashboard (`./run.sh monitor`)**: Live visual monitoring dashboard displaying active turns, chosen models, reasoning effort, queue depth, token usage, and reflex telemetry.
-> - **Telegram `/model` Command & Alias Support**: Inspect active models and runtime switch tiers on the fly (`/model 3.6`, `/model 3.7`, `/model 3.8`, `/model pro`).
-> - **TypeSafe AI (Jev) System-One Primitives**: Decoupled, modular integration package (`gemini_hermes/jev/`) providing smart `/btw` sidecar intent classification and reflex decision engine.
-> - **100% Optional Strict 2-World Architecture**: Standard `./run.sh start` operates with zero external dependencies; accelerated `./run.sh start-jev` activates dynamic model & effort selection.
-> - **Expanded Dual Verification Suite**: Automated test suite expanded to **125 passing unit & integration tests** (100% pass rate).
+> **Release v1.7.3 Highlights:**
+> - **Autonomous Memory Pruning & Archival**: Intelligently prunes completed backlog items and old operational notes to disk archives (`data/memory/archive/BACKLOG_ARCHIVE.md`) with zero state loss.
+> - **JIT Dynamic Skill Selector**: Selectively injects only relevant procedural skills into prompt context per turn rather than the whole catalog, drastically reducing input prompt overhead.
+> - **Context Bridge & Relative Growth Session Rotation**: Automated context rotation triggered by token growth and turn limits with `<context_bridge>` summary continuity.
+> - **Differential Follow-Up Prompts**: Lean prompt architecture for multi-turn sessions with cache-stabilized prefix layouts.
+> - **Expanded Test Suite**: Full suite expanded to **150 passing unit & integration tests** (100% pass rate).
 
 ---
 

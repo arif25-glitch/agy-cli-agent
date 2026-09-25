@@ -1,6 +1,24 @@
 # Active Task Backlog & Operational Notes
 
-## Active Tasks
+- [x] Dynamic / Relative Growth Rotation (Fixes the Rotation Loop):
+  * [x] Relative token growth tracking: `SessionStore` tracks `session_baseline_tokens` on Turn 1 and `last_turn_input_tokens`, calculating relative context delta rather than fixed static ceilings.
+  * [x] Minimum turn guardrail (`min_turns = 2`): Guarantees new sessions never rotate on single initial turns even when base prompts are large, breaking the single-turn rotation loop.
+  * [x] Relative growth thresholding & expansion ratio: Rotates when context expands by `+40,000` tokens beyond baseline or hits turn limits (`15`), with hard safety ceiling (`120,000` tokens) against window overflow.
+  * [x] Runner execution & config: Exposed in `Config` and wired through `ExecutionRunner` with smooth session rotation and Context Bridge handover.
+
+- [x] Autonomous Memory Pruning & Archiving across 2 Worlds (Keeps Base Context Lean):
+  * [x] 2-World Architecture (Pure Core vs Jev AI): World 1 (Pure Core) provides 100% deterministic, zero-dependency pruning for completed backlog tasks (`BACKLOG_ARCHIVE.md`) and stale memory notes (`MEMORY_ARCHIVE.md`); World 2 (Jev AI Accelerator) adds `JevMemoryPruner` with semantic `Choice` classification (transient vs evergreen) and automatic graceful fallback.
+  * [x] Memory Notes Pruning: Added `MemoryNotesArchiver` in `gemini_hermes/memory/archiver.py` to preserve core directives intact while archiving stale debug facts/notes.
+  * [x] Autonomous post-turn lifecycle hook: Integrated into `ExecutionRunner` to automatically prune and tier memory upon turn completion without blocking user messages.
+  * [x] Upgraded `/compact` Telegram handler: Supports both manual inspection and autonomous pruning with rich breakdown of archived tasks, stale notes, and token footprint.
+  * [x] Dual verification test suites: Positive and negative tests in `tests/test_relative_growth_rotation.py` and `tests/test_autonomous_memory_pruning.py`.
+
+- [x] Token Efficiency & Context Optimization (Differential Prompting, JIT Skills, and Context Checkpointing):
+  * [x] Differential Follow-Up Prompts: Turn 0 / initial session initializes full base persona & memory; Turn > 0 passes compact differential continuity note, dropping redundant in-prompt base text and static skill catalogs (>85% prompt token reduction per turn).
+  * [x] Cache Prefix Stabilization: Structured prompts with immutable base instructions at index 0 and dynamic turn/session metadata at the bottom, maximizing Gemini KV context cache hits.
+  * [x] Jev Just-In-Time (JIT) Skill Activation: Encapsulated `JevSkillSelector` with Jev `Choice` primitive in `gemini_hermes/jev/skill_selector.py` to evaluate incoming tasks and inject only relevant procedures (or 0 skills for standard coding/chat).
+  * [x] Autonomous Context Checkpointing & Session Rotation: Added `should_rotate_session`, `rotate_session_with_bridge`, and `pop_context_bridge` in `SessionStore` to automatically reset conversation IDs at token/turn ceilings (`50,000` tokens / `15` turns) while seeding fresh sessions with a compact Context Bridge summary.
+  * [x] Dual verification test suite: 9 positive and negative test cases in `tests/test_token_efficiency.py` covering differential prompt generation, cache prefix ordering, JIT skill filtering, timeout fallbacks, session rotation boundaries, and context bridge handover.
 
 - [x] Dynamic Model Selection via Jev AI System-One:
   * [x] Model tier architecture: Mapped workloads to cost-efficient Antigravity models (gemini-3.6-flash for simple/cheap with low effort, gemini-3.7-flash for balanced with medium effort, gemini-3.8-flash for higher workloads / architecture with high effort, gemini-3.1-pro for deep algorithmic reasoning).
@@ -37,10 +55,10 @@
 - *(Historical completed milestones archived in `data/memory/archive/BACKLOG_ARCHIVE.md`)*
 
 ## Operational Notes & Inquiries
-- Production Release `v1.7.2` updated: Session Token Reset & Lifetime Tracking on `/new` and `/reset` synchronized with live telemetry and `./run.sh monitor`.
+- Production Release `v1.7.3` updated: Dynamic Relative Growth Rotation (Fixed Rotation Loop) & Autonomous Memory Pruning across 2 Worlds deployed.
 - Strict 2-world boundary maintained:
-  * Standard `./run.sh start`: 100% pure engine execution, static configured model (`config.agy_model`), pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
-  * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic model routing (3.6-flash, 3.7-flash, 3.8-flash, 3.1-pro) and dynamic reasoning effort (`low`, `medium`, `high`) with automatic graceful fallback.
+  * Standard `./run.sh start`: 100% pure engine execution, differential prompts, pure core deterministic backlog & note pruning (`BACKLOG_ARCHIVE.md`, `MEMORY_ARCHIVE.md`), static configured model (`config.agy_model`), pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
+  * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic model routing (3.6-flash, 3.7-flash, 3.8-flash, 3.1-pro), dynamic reasoning effort (`low`, `medium`, `high`), JIT skill auto-selection, and Jev smart semantic memory pruning (`transient` vs `evergreen`) with automatic graceful fallback.
 - Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry including active model, active task queue, and total session/lifetime token usage.
-- Test Suite: All 125 tests passing cleanly (`Ran 125 tests, OK`).
+- Test Suite: All 150 tests passing cleanly (`Ran 150 tests in 12.063s, OK`).
 

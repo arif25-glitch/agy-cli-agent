@@ -5,12 +5,14 @@ When running './run.sh start' (Jev disabled), this adapter safely reports
 is_available = False and all methods return None or fallback values with zero overhead.
 """
 import logging
-from typing import Any, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from gemini_hermes.config import Config, config as default_config
 from gemini_hermes.jev.client import JevClient, JevReflexDecision
 from gemini_hermes.jev.effort_selector import JevEffortSelector
 from gemini_hermes.jev.btw_classifier import JevBtwClassifier
+from gemini_hermes.jev.skill_selector import JevSkillSelector
+from gemini_hermes.jev.memory_pruner import JevMemoryPruner
 
 logger = logging.getLogger("gemini-hermes.jev.adapter")
 
@@ -20,8 +22,10 @@ class JevAdapter:
     Modular integration adapter for Jev AI System-One.
     Encapsulates:
       - Dynamic reasoning effort selection
+      - Dynamic model tier selection
       - Fast-path conversational context evaluation
       - /btw sidecar smart intent classification
+      - Just-In-Time (JIT) skill auto-selection
     """
 
     def __init__(self, cfg: Optional[Config] = None, client: Optional[Any] = None):
@@ -29,10 +33,17 @@ class JevAdapter:
         timeout_val = getattr(self.config, "jev_timeout", 3.0)
         self.client = JevClient(cfg=self.config, client=client, default_timeout=timeout_val)
         self.effort_selector = JevEffortSelector(self.client)
+        self.skill_selector = JevSkillSelector(
+            self.client, min_confidence=getattr(self.config, "jev_confidence_threshold", 0.70)
+        )
         self.btw_classifier = JevBtwClassifier(
             self.client,
             default_timeout=timeout_val,
             min_confidence=getattr(self.config, "jev_confidence_threshold", 0.85),
+        )
+        self.memory_pruner = JevMemoryPruner(
+            self.client,
+            min_confidence=getattr(self.config, "jev_confidence_threshold", 0.70),
         )
 
     @property
@@ -73,11 +84,55 @@ class JevAdapter:
             text, default_effort=default_effort, timeout=timeout
         )
 
+    def is_fast_path_eligible(
+        self,
+        decision: Optional[JevReflexDecision],
+        selected_effort: str,
+    ) -> bool:
+        """Determines if the inbound request qualifies for fast-path conversational reflex."""
+        if not self.is_available or not getattr(self.config, "jev_fast_path", True):
+            return False
+        return self.effort_selector.is_fast_path_eligible(decision, selected_effort)
+
     async def classify_btw(self, text: str, timeout: Optional[float] = None) -> Optional[Tuple[str, float]]:
         """Classify /btw query intent with Jev. Returns None if disabled or unconfident."""
         if not self.is_available:
             return None
         return await self.btw_classifier.classify(text, timeout=timeout)
+
+    async def select_skills(
+        self,
+        text: str,
+        available_skills: Dict[str, Any],
+        timeout: Optional[float] = None,
+    ) -> Optional[List[str]]:
+        """Dynamically select only relevant skills with Jev. Returns None if disabled/error."""
+        if not self.is_available or not getattr(self.config, "jev_jit_skills", True):
+            return None
+        return await self.skill_selector.select_skills(text, available_skills, timeout=timeout)
+
+    async def prune_memory(
+        self,
+        memory_file: Any,
+        memory_archive: Any,
+        backlog_file: Any,
+        backlog_archive: Any,
+        keep_recent_backlog: int = 5,
+        max_notes: int = 10,
+        timeout: Optional[float] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Smart semantic memory pruning using Jev AI. Returns None on fallback."""
+        if not self.is_available or not getattr(self.config, "jev_memory_pruning", True):
+            return None
+        return await self.memory_pruner.prune_memory_smart(
+            memory_file=memory_file,
+            memory_archive=memory_archive,
+            backlog_file=backlog_file,
+            backlog_archive=backlog_archive,
+            keep_recent_backlog=keep_recent_backlog,
+            max_notes=max_notes,
+            timeout=timeout,
+        )
 
     async def close(self) -> None:
         """Close underlying client connections."""

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List
 from gemini_hermes.memory.store import MemoryStore
 from gemini_hermes.skills.manager import SkillManager
 from gemini_hermes.projects.manager import ProjectManager
@@ -46,6 +46,12 @@ You embody the cognitive architecture and philosophy of Nous Research's Hermes A
    - Always verify tool execution results before reporting status to the user.
 """
 
+HERMES_FOLLOWUP_INSTRUCTIONS = """### Gemini-Hermes Active Session Continuity
+- Role: You are Gemini-Hermes, continuing your active session with your user colleague.
+- Core Directives: Maintain absolute factual integrity ("NEVER LIE"), deliberate cadence ("Slow is Smooth, Smooth is Fast"), dual verification, and mobile-friendly Telegram Markdown.
+- Memory Persistence: Physical memory is stored at `{memory_dir}` (`USER.md`, `MEMORY.md`, `BACKLOG.md`, `REFERENCES.md`). Write memory updates to disk via file tools before reporting.
+"""
+
 HERMES_FAST_PATH_INSTRUCTIONS = """You are Gemini-Hermes, an autonomous, persistent, and self-improving AI agent colleague.
 You embody the cognitive architecture and philosophy of Nous Research's Hermes Agent, powered seamlessly by Google Antigravity (agy-cli) as your proxy model execution engine.
 
@@ -65,7 +71,11 @@ def build_system_prompt(
     project_manager: Optional[ProjectManager] = None,
     current_chat_id: Optional[int] = None,
     fast_path: bool = False,
+    is_followup: bool = False,
+    skills_subset: Optional[List[str]] = None,
+    context_bridge_summary: Optional[str] = None,
 ) -> str:
+    # 1. Fast-path reflex prompt for trivial chatter (ultra-lean)
     if fast_path:
         parts = [HERMES_FAST_PATH_INSTRUCTIONS]
         usr = memory_store.get_user_profile().strip()
@@ -78,6 +88,29 @@ def build_system_prompt(
             )
         return "\n\n".join(parts)
 
+    # 2. Differential Follow-Up prompt (session turn > 0)
+    if is_followup:
+        parts = [HERMES_FOLLOWUP_INSTRUCTIONS.format(memory_dir=memory_store.memory_dir).strip()]
+
+        # Only inject specific skills if dynamically activated
+        if skills_subset:
+            skills_summary = skill_manager.render_skills_summary(skills_subset=skills_subset)
+            if skills_summary:
+                parts.append("### Active Procedures\n" + skills_summary)
+
+        # Include context bridge if recently rotated
+        if context_bridge_summary:
+            parts.append(f"### Context Bridge (Resumed State)\n<context_bridge>\n{context_bridge_summary}\n</context_bridge>")
+
+        # Session metadata always placed at the end for prefix stability
+        if current_chat_id:
+            sess = memory_store.get_session(current_chat_id)
+            parts.append(
+                f"### Session Context\n- Telegram Chat ID: {current_chat_id}\n- Turn Count: {sess.get('turn_count', 0)}"
+            )
+        return "\n\n".join(parts)
+
+    # 3. Full Base System Prompt (Turn 0 / New Session) with cache-stabilized layout
     parts = [HERMES_BASE_INSTRUCTIONS]
 
     # Add memory context with physical storage path
@@ -90,11 +123,10 @@ def build_system_prompt(
             f"> To update memory, you MUST execute physical file editing tools (`replace_file_content` / `write_to_file`) on these files.\n"
             f"> Rule: 'NEVER LIE' — Never state an update is saved without actual tool execution.\n\n"
         )
-
         parts.append(mem_header + memory_context)
 
-    # Add available skills
-    skills_summary = skill_manager.render_skills_summary()
+    # Add available skills (either full catalog or JIT subset)
+    skills_summary = skill_manager.render_skills_summary(skills_subset=skills_subset)
     if skills_summary:
         parts.append("### Registered Skills Catalog\n" + skills_summary)
 
@@ -104,7 +136,11 @@ def build_system_prompt(
         if projects_summary:
             parts.append("### Project State Index (Active Bookmarks)\n" + projects_summary)
 
-    # Add runtime meta
+    # Add context bridge if recently rotated
+    if context_bridge_summary:
+        parts.append(f"### Context Bridge (Resumed State)\n<context_bridge>\n{context_bridge_summary}\n</context_bridge>")
+
+    # Add runtime meta at the very end for strict prefix cache stability
     if current_chat_id:
         sess = memory_store.get_session(current_chat_id)
         parts.append(
