@@ -163,7 +163,7 @@ class TestAutonomousMemoryPruning(unittest.IsolatedAsyncioTestCase):
         mock_client.evaluate_reflex = AsyncMock(side_effect=mock_evaluate)
 
         pruner = JevMemoryPruner(mock_client, min_confidence=0.70)
-        adapter = JevAdapter(cfg=Config(jev_enabled=True), client=mock_client)
+        adapter = JevAdapter(cfg=Config(typesafe_api_key="ts-test", jev_enabled=True), client=mock_client)
         adapter.memory_pruner = pruner
 
         res = await self.memory_store.autonomous_prune(

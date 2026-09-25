@@ -212,7 +212,7 @@ class TestTokenEfficiencyAndPromptOptimization(unittest.IsolatedAsyncioTestCase)
         self.assertIsNone(self.memory_store.session_store.pop_context_bridge(999999))
 
     def test_fast_path_eligibility_positive_and_negative(self):
-        adapter = JevAdapter(cfg=Config(jev_enabled=True, jev_dynamic_effort=True, jev_fast_path=True))
+        adapter = JevAdapter(cfg=Config(typesafe_api_key="ts-test", jev_enabled=True, jev_dynamic_effort=True, jev_fast_path=True))
         # Positive: low effort, casual chat intent, no deep reasoning
         dec_pos = JevReflexDecision(intent="casual_chat", needs_deep_reasoning=False)
         self.assertTrue(adapter.is_fast_path_eligible(dec_pos, "low"))
@@ -226,7 +226,7 @@ class TestTokenEfficiencyAndPromptOptimization(unittest.IsolatedAsyncioTestCase)
         self.assertFalse(adapter.is_fast_path_eligible(dec_complex, "low"))
 
         # Negative 3: disabled when jev_fast_path is False
-        adapter_disabled = JevAdapter(cfg=Config(jev_enabled=True, jev_dynamic_effort=True, jev_fast_path=False))
+        adapter_disabled = JevAdapter(cfg=Config(typesafe_api_key="ts-test", jev_enabled=True, jev_dynamic_effort=True, jev_fast_path=False))
         self.assertFalse(adapter_disabled.is_fast_path_eligible(dec_pos, "low"))
 
 
