@@ -106,6 +106,8 @@ class ExecutionRunner:
 
         # Record active turn telemetry
         q_items = [str(t) for t in bot._task_queues.get(chat_id, [])]
+        sess_tok = getattr(bot.memory_store, "get_session_token_usage", lambda cid: {})(chat_id)
+        glob_tok = getattr(bot.memory_store, "get_total_token_usage", lambda: {})()
         TelemetryExporter.record_state(
             pid=os.getpid(),
             is_running=True,
@@ -122,6 +124,8 @@ class ExecutionRunner:
             jev_latency_ms=getattr(decision_val, "latency_ms", None) if decision_val else None,
             jev_complexity=getattr(decision_val, "complexity_score", None) if decision_val else None,
             jev_decision=f"{selected_model}:{selected_effort}" if decision_val else None,
+            session_tokens=sess_tok,
+            global_tokens=glob_tok,
         )
 
 
@@ -348,6 +352,8 @@ class ExecutionRunner:
 
             # Record idle telemetry state
             remaining_q = [str(t) for t in bot._task_queues.get(chat_id, [])]
+            latest_sess_tok = getattr(bot.memory_store, "get_session_token_usage", lambda cid: {})(chat_id)
+            latest_glob_tok = getattr(bot.memory_store, "get_total_token_usage", lambda: {})()
             TelemetryExporter.record_state(
                 pid=os.getpid(),
                 is_running=bool(bot._active_tasks),
@@ -360,6 +366,8 @@ class ExecutionRunner:
                 queue_depth=len(remaining_q),
                 queue_items=remaining_q,
                 jev_enabled=getattr(config, "jev_enabled", False),
+                session_tokens=latest_sess_tok,
+                global_tokens=latest_glob_tok,
             )
 
             # Check if there is a queued /btw task (only if not steered)

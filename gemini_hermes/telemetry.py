@@ -39,6 +39,8 @@ class TelemetryExporter:
         jev_latency_ms: Optional[float] = None,
         jev_complexity: Optional[float] = None,
         jev_decision: Optional[str] = None,
+        session_tokens: Optional[Dict[str, Any]] = None,
+        global_tokens: Optional[Dict[str, Any]] = None,
         last_error: Optional[str] = None,
     ) -> None:
         """Atomically persist telemetry state snapshot to disk."""
@@ -60,6 +62,10 @@ class TelemetryExporter:
                 "latency_ms": round(jev_latency_ms, 1) if jev_latency_ms is not None else None,
                 "complexity": round(jev_complexity, 2) if jev_complexity is not None else None,
                 "last_decision": jev_decision,
+            },
+            "tokens": {
+                "session": session_tokens or {},
+                "global": global_tokens or {},
             },
             "last_error": last_error,
         }

@@ -18,10 +18,24 @@ from rich.table import Table
 from rich.text import Text
 
 from gemini_hermes.config import BASE_DIR, SESSIONS_DIR, config
+from gemini_hermes.memory.session_store import SessionStore
 from gemini_hermes.telemetry import TelemetryExporter
 
 PID_FILE = BASE_DIR / "gemini-hermes.pid"
 LOG_FILE = BASE_DIR / "gemini-hermes.log"
+
+
+def format_token_count(n: int) -> str:
+    """Format token count with clean human-readable thousands and millions suffixes."""
+    try:
+        val = int(n)
+    except (ValueError, TypeError):
+        val = 0
+    if val >= 1_000_000:
+        return f"{val:,} ({val/1_000_000:.2f}M)"
+    elif val >= 1_000:
+        return f"{val:,} ({val/1_000:.1f}k)"
+    return f"{val:,}"
 
 
 class CliMonitor:
@@ -31,6 +45,7 @@ class CliMonitor:
         self.console = Console()
         self.refresh_rate = refresh_rate
         self.running = True
+        self.session_store = SessionStore(SESSIONS_DIR)
 
     def get_daemon_status(self) -> Dict[str, Any]:
         """Check PID file and process health."""
@@ -162,6 +177,64 @@ class CliMonitor:
 
         return Panel(table, title="[bold]📋 Execution & Task Queue[/bold]", border_style="green")
 
+    def build_token_usage_panel(self, state: Dict[str, Any]) -> Panel:
+        """Render token usage metrics for current session and global lifetime."""
+        tokens_info = state.get("tokens", {})
+        session_tok = tokens_info.get("session") or {}
+        global_tok = tokens_info.get("global") or {}
+
+        # Fallback to direct disk inspection if state is unpopulated
+        if not session_tok or not global_tok:
+            try:
+                active_chat = state.get("active_chat_id")
+                session_tok = self.session_store.get_session_token_usage(active_chat)
+                global_tok = self.session_store.get_total_token_usage()
+            except Exception:
+                pass
+
+        table = Table(box=None, expand=True, show_header=False, pad_edge=False)
+        table.add_column("Key", style="bold white", width=18)
+        table.add_column("Val", style="yellow")
+
+        # Session Metrics
+        active_chat = session_tok.get("chat_id")
+        chat_label = str(active_chat) if active_chat else "[dim]Latest Session[/dim]"
+        sess_in = session_tok.get("input_tokens") if "input_tokens" in session_tok else session_tok.get("total_input_tokens", 0)
+        sess_out = session_tok.get("output_tokens") if "output_tokens" in session_tok else session_tok.get("total_output_tokens", 0)
+        sess_total = session_tok.get("total_tokens", sess_in + sess_out)
+        sess_turns = session_tok.get("turn_count", 0)
+
+        # Global Lifetime Metrics
+        glob_in = global_tok.get("total_input_tokens", 0)
+        glob_out = global_tok.get("total_output_tokens", 0)
+        glob_total = global_tok.get("total_tokens", glob_in + glob_out)
+        glob_sessions = global_tok.get("session_count", 0)
+        glob_turns = global_tok.get("total_turns", 0)
+
+        table.add_row("Session Chat:", chat_label)
+        table.add_row(
+            "Session In / Out:",
+            f"{format_token_count(sess_in)} in  /  {format_token_count(sess_out)} out",
+        )
+        table.add_row(
+            "Session Total:",
+            f"[bold yellow]{format_token_count(sess_total)}[/bold yellow] ({sess_turns} turns)",
+        )
+        table.add_row(
+            "Tracked Sessions:",
+            f"[cyan]{glob_sessions} active sessions[/cyan] ({glob_turns} turns)",
+        )
+        table.add_row(
+            "Global In / Out:",
+            f"{format_token_count(glob_in)} in  /  {format_token_count(glob_out)} out",
+        )
+        table.add_row(
+            "Lifetime Total:",
+            f"[bold green]{format_token_count(glob_total)} tokens[/bold green]",
+        )
+
+        return Panel(table, title="[bold]📊 Token & Session Usage[/bold]", border_style="yellow")
+
     def build_logs_panel(self) -> Panel:
         """Render recent log stream."""
         logs = self.get_recent_logs(max_lines=5)
@@ -204,7 +277,13 @@ class CliMonitor:
                 ),
                 ratio=1,
             ),
-            Layout(self.build_jev_panel(state), ratio=1),
+            Layout(
+                Group(
+                    self.build_jev_panel(state),
+                    self.build_token_usage_panel(state),
+                ),
+                ratio=1,
+            ),
         )
 
         return layout

@@ -170,6 +170,14 @@ class MemoryStore:
     def reset_session(self, chat_id: int):
         self.session_store.reset_session(chat_id)
 
+    def get_total_token_usage(self) -> Dict[str, Any]:
+        """Calculates aggregate token usage across all tracked sessions."""
+        return self.session_store.get_total_token_usage()
+
+    def get_session_token_usage(self, chat_id: Optional[int] = None) -> Dict[str, Any]:
+        """Retrieves token usage for a specific chat session or latest active session."""
+        return self.session_store.get_session_token_usage(chat_id=chat_id)
+
     # -------------------------------------------------------------------------
     # Backlog Archiving & Hot Context (Delegated to BacklogArchiver)
     # -------------------------------------------------------------------------

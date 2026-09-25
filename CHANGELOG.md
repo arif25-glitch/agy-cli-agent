@@ -5,6 +5,18 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-09-25
+
+### Added
+- **Session & Global Token Usage Tracking in Terminal UI Dashboard (`./run.sh monitor`)**:
+  * **Session & Lifetime Aggregate Calculations (`SessionStore` & `MemoryStore`)**: Added `get_total_token_usage()` and `get_session_token_usage(chat_id)` to calculate authoritative input, output, total tokens, session counts, and turn metrics directly from Antigravity engine stream receipts.
+  * **Live Telemetry Exporter Integration (`TelemetryExporter` & `ExecutionRunner`)**: Exported real-time session and global token snapshots to atomic `telemetry.json` at turn initialization and turn completion.
+  * **Dedicated Token Usage UI Panel (`CliMonitor`)**: Added rich `build_token_usage_panel` to `./run.sh monitor` dashboard displaying:
+    - **Active Session**: Chat ID, Input / Output tokens, Session Total tokens, and Turn count.
+    - **Global Lifetime**: Tracked active sessions count, Total turns, Global Input / Output tokens, and Lifetime Total token usage.
+    - **Smart Metric Formatting**: Human-readable thousands (`1.5k`) and millions (`216.29M`) suffixes with fallback disk inspection when offline or idle.
+  * **Automated Dual Verification Test Suite**: Added positive and negative test cases in `tests/test_cli_monitor.py` covering token formatting, empty/populated session aggregations, offline fallback, and full dashboard rendering.
+
 ## [1.7.0] - 2026-09-24
 
 ### Added

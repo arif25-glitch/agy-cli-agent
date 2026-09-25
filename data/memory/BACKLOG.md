@@ -16,6 +16,12 @@
   * [x] Fast-Path Conversational Context: Implemented and verified with dual testing (`tests/test_fast_path_context.py`). Automatically slims prompt from ~12k to ~800 tokens for casual chat, keeping user identity (`USER.md`) and setting `--effort low` with 0 thinking tokens.
   * [x] Upgraded `/btw` Sidecar Intent Classification: Integrated Jev `Choice` primitive via `gemini_hermes/jev/btw_classifier.py` and `classify_btw_intent_smart`. Verified with dual test suite (`tests/test_jev_btw_classifier.py`) covering happy paths, low confidence fallback (<0.85), timeout (>1.0s), and deterministic 0ms prefix overrides (`?`, `task:`).
 
+- [x] Total Token Usage & Session Usage in CLI Monitor (`./run.sh monitor`):
+  * [x] Session & aggregate token calculations: Implemented `get_total_token_usage()` and `get_session_token_usage()` in `SessionStore` and `MemoryStore` to compute input, output, total tokens, and turn counts per session and across all sessions.
+  * [x] Telemetry exporter integration: Updated `TelemetryExporter` and `ExecutionRunner` to capture live session and global token metrics in `telemetry.json` on turn initialization and completion.
+  * [x] Dedicated UI panel in CLI Monitor: Added `build_token_usage_panel` in `gemini_hermes/cli_monitor.py` displaying Active Session (Chat ID, Input/Output, Total Tokens, Turn Count) and Lifetime Global Usage (Tracked Sessions, Global Input/Output, Lifetime Total Tokens) with clean human-readable thousands/millions formatting (`1.5k`, `216.29M`).
+  * [x] Dual verification test suite: Added positive and negative test cases in `tests/test_cli_monitor.py` covering token formatting, empty/populated session aggregations, offline fallback, and dashboard layout rendering.
+
 - [x] Interactive Terminal UI Dashboard (`./run.sh monitor`):
   * Implemented real-time dashboard (`gemini_hermes/cli_monitor.py`) with rich layout panels.
   * Real-time telemetry exporter (`gemini_hermes/telemetry.py`) tracking active turns, chat ID, reasoning effort, queue depth, and Jev reflex metrics with zero locking.
@@ -25,10 +31,10 @@
 - *(Historical completed milestones archived in `data/memory/archive/BACKLOG_ARCHIVE.md`)*
 
 ## Operational Notes & Inquiries
-- Production Release `v1.7.0` updated: Dynamic Model Selection enabled alongside Dynamic Reasoning Effort and Fast-Path context.
+- Production Release `v1.7.0` updated: Live Token & Session Usage telemetry enabled in `./run.sh monitor`.
 - Strict 2-world boundary maintained:
   * Standard `./run.sh start`: 100% pure engine execution, static configured model (`config.agy_model`), pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
   * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic model routing (3.6-flash, 3.7-flash, 3.8-flash, 3.1-pro) and dynamic reasoning effort (`low`, `medium`, `high`) with automatic graceful fallback.
-- Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry including active model.
-- Test Suite: All 123 tests passing cleanly (`Ran 123 tests in 9.473s, OK`).
+- Interactive Monitor: Run `./run.sh monitor` anytime in a terminal window for live visual telemetry including active model, active task queue, and total session/lifetime token usage.
+- Test Suite: All 125 tests passing cleanly (`Ran 125 tests, OK`).
 
