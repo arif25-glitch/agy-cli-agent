@@ -42,8 +42,11 @@ class SessionStore:
                 "chat_id": chat_id,
                 "conversation_id": None,
                 "turn_count": 0,
+                "lifetime_turns": 0,
                 "created_at": datetime.now().isoformat(),
                 "last_active": datetime.now().isoformat(),
+                "session_input_tokens": 0,
+                "session_output_tokens": 0,
                 "total_input_tokens": 0,
                 "total_output_tokens": 0,
             }
@@ -66,8 +69,11 @@ class SessionStore:
                 "chat_id": chat_id,
                 "conversation_id": None,
                 "turn_count": 0,
+                "lifetime_turns": 0,
                 "created_at": datetime.now().isoformat(),
                 "last_active": datetime.now().isoformat(),
+                "session_input_tokens": 0,
+                "session_output_tokens": 0,
                 "total_input_tokens": 0,
                 "total_output_tokens": 0,
             },
@@ -76,7 +82,10 @@ class SessionStore:
         if conversation_id:
             sess["conversation_id"] = conversation_id
         sess["turn_count"] = sess.get("turn_count", 0) + turn_increment
+        sess["lifetime_turns"] = sess.get("lifetime_turns", sess.get("turn_count", 0)) + turn_increment
         sess["last_active"] = datetime.now().isoformat()
+        sess["session_input_tokens"] = sess.get("session_input_tokens", 0) + input_tokens
+        sess["session_output_tokens"] = sess.get("session_output_tokens", 0) + output_tokens
         sess["total_input_tokens"] = sess.get("total_input_tokens", 0) + input_tokens
         sess["total_output_tokens"] = sess.get("total_output_tokens", 0) + output_tokens
 
@@ -89,6 +98,8 @@ class SessionStore:
         if key in sessions:
             sessions[key]["conversation_id"] = None
             sessions[key]["turn_count"] = 0
+            sessions[key]["session_input_tokens"] = 0
+            sessions[key]["session_output_tokens"] = 0
             sessions[key]["last_active"] = datetime.now().isoformat()
             self._save_sessions(sessions)
             logger.info(f"Reset session conversation for chat_id={chat_id}")
@@ -98,7 +109,7 @@ class SessionStore:
         sessions = self._load_sessions()
         total_in = sum(s.get("total_input_tokens", 0) for s in sessions.values())
         total_out = sum(s.get("total_output_tokens", 0) for s in sessions.values())
-        total_turns = sum(s.get("turn_count", 0) for s in sessions.values())
+        total_turns = sum(s.get("lifetime_turns", s.get("turn_count", 0)) for s in sessions.values())
         return {
             "total_input_tokens": total_in,
             "total_output_tokens": total_out,
@@ -133,8 +144,8 @@ class SessionStore:
                 target_sess = next(iter(sessions.values()))
 
         if target_sess:
-            in_tok = target_sess.get("total_input_tokens", 0)
-            out_tok = target_sess.get("total_output_tokens", 0)
+            in_tok = target_sess.get("session_input_tokens", 0)
+            out_tok = target_sess.get("session_output_tokens", 0)
             return {
                 "chat_id": target_sess.get("chat_id"),
                 "input_tokens": in_tok,

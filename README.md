@@ -1,8 +1,9 @@
-# 🪐 Gemini-Hermes AI Agent `v1.7.1`
+# 🪐 Gemini-Hermes AI Agent `v1.7.2`
 
 **Gemini-Hermes** is an autonomous, persistent, and self-improving AI agent colleague combining **Nous Research's Hermes Agent** cognitive architecture with **Google Antigravity CLI (`agy`)** as its proxy model execution engine, accessible anywhere via a **Telegram Gateway**.
 
-> **Release v1.7.1 Highlights:**
+> **Release v1.7.2 Highlights:**
+> - **Session Token Reset & Lifetime Tracking (`/new`, `/reset`)**: Session-level token metrics (`session_input_tokens`, `session_output_tokens`) are cleanly isolated and reset upon conversation reset, while preserving historical lifetime token usage across sessions.
 > - **Session & Global Token Usage Tracking (`./run.sh monitor`)**: Real-time token usage dashboard panel capturing authoritative engine tokens per session and lifetime total across all tracked sessions.
 > - **Dynamic Model Selection & 4-Tier Workload Routing**: Intelligent pre-dispatch evaluation via Jev AI System-One that routes prompts across 4 cost-calibrated Antigravity tiers (`gemini-3.6-flash`, `gemini-3.7-flash`, `gemini-3.8-flash`, `gemini-3.1-pro`).
 > - **Dynamic Reasoning Effort & Fast-Path Context**: Automatic effort scaling (`low`, `medium`, `high`) and fast-path conversational prompt slimming (~800 tokens, 0 thinking tokens) for trivial chat.
@@ -271,8 +272,8 @@ agy-hermes/
 │   ├── test_typesafe_live.py      # Standalone live TypeSafe AI primitive test harness
 │   └── test_jev_reflex_prefilter.py # Live reflex prefilter tester
 ├── gemini_hermes/
-│   ├── __init__.py                # Package definition (v1.7.1)
-│   ├── config.py                  # Settings loader & path constants (v1.7.1)
+│   ├── __init__.py                # Package definition (v1.7.2)
+│   ├── config.py                  # Settings loader & path constants (v1.7.2)
 │   ├── cli.py                     # CLI commands (start, setup, config, test, monitor, status)
 │   ├── cli_monitor.py             # Interactive Terminal UI Dashboard
 │   ├── telemetry.py               # Zero-locking shared telemetry exporter

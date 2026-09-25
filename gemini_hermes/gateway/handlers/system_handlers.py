@@ -78,6 +78,11 @@ async def handle_status(bot: Any, chat_id: int):
     health = await bot.forwarder.check_health()
     status_symbol = "🟢 Online" if health.get("ok") else "🔴 Error"
 
+    sess_in = sess.get("session_input_tokens", 0)
+    sess_out = sess.get("session_output_tokens", 0)
+    glob_in = sess.get("total_input_tokens", 0)
+    glob_out = sess.get("total_output_tokens", 0)
+
     text = (
         f"📊 *Gemini-Hermes Status:*\n\n"
         f"• *App Version:* `v{config.app_version}`\n"
@@ -86,7 +91,8 @@ async def handle_status(bot: Any, chat_id: int):
         f"• *Reasoning Effort:* `{config.reasoning_effort}`\n"
         f"• *Current Conversation ID:* `{sess.get('conversation_id') or 'None (Fresh Session)'}`\n"
         f"• *Session Turns:* `{sess.get('turn_count', 0)}`\n"
-        f"• *Tokens Used:* ~{sess.get('total_input_tokens', 0) + sess.get('total_output_tokens', 0):,}\n"
+        f"• *Session Tokens:* ~{sess_in + sess_out:,}\n"
+        f"• *Lifetime Tokens:* ~{glob_in + glob_out:,}\n"
         f"• *Registered Skills:* `{len(bot.skill_manager.get_all_skills())}`\n"
         f"• *Indexed Projects:* `{len(bot.project_manager.list_projects())}`\n"
         f"• *Memory File:* `data/memory/MEMORY.md`"

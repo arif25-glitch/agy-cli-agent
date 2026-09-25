@@ -27,7 +27,7 @@ from gemini_hermes.gateway.formatter import (
 class TestConfig(unittest.TestCase):
     def test_default_config(self):
         cfg = Config()
-        self.assertEqual(cfg.app_version, "1.7.1")
+        self.assertEqual(cfg.app_version, "1.7.2")
 
         self.assertGreaterEqual(cfg.forwarder_timeout, 300.0)
         self.assertGreaterEqual(cfg.inactivity_timeout, 60.0)
@@ -80,6 +80,8 @@ class TestMemoryStore(unittest.TestCase):
         updated = self.store.get_session(chat_id)
         self.assertEqual(updated["conversation_id"], "conv-123")
         self.assertEqual(updated["turn_count"], 1)
+        self.assertEqual(updated["session_input_tokens"], 50)
+        self.assertEqual(updated["session_output_tokens"], 100)
         self.assertEqual(updated["total_input_tokens"], 50)
         self.assertEqual(updated["total_output_tokens"], 100)
 
@@ -87,6 +89,10 @@ class TestMemoryStore(unittest.TestCase):
         reset_sess = self.store.get_session(chat_id)
         self.assertEqual(reset_sess["turn_count"], 0)
         self.assertIsNone(reset_sess["conversation_id"])
+        self.assertEqual(reset_sess["session_input_tokens"], 0)
+        self.assertEqual(reset_sess["session_output_tokens"], 0)
+        self.assertEqual(reset_sess["total_input_tokens"], 50)
+        self.assertEqual(reset_sess["total_output_tokens"], 100)
 
     def test_prebuilt_templates_standards(self):
         usr = self.store.get_user_profile()

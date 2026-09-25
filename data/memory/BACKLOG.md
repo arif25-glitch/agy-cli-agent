@@ -16,6 +16,12 @@
   * [x] Fast-Path Conversational Context: Implemented and verified with dual testing (`tests/test_fast_path_context.py`). Automatically slims prompt from ~12k to ~800 tokens for casual chat, keeping user identity (`USER.md`) and setting `--effort low` with 0 thinking tokens.
   * [x] Upgraded `/btw` Sidecar Intent Classification: Integrated Jev `Choice` primitive via `gemini_hermes/jev/btw_classifier.py` and `classify_btw_intent_smart`. Verified with dual test suite (`tests/test_jev_btw_classifier.py`) covering happy paths, low confidence fallback (<0.85), timeout (>1.0s), and deterministic 0ms prefix overrides (`?`, `task:`).
 
+- [x] Session Token Reset & Lifetime Tracking on `/new` and `/reset`:
+  * [x] Distinguish session vs lifetime metrics: `SessionStore` now tracks `session_input_tokens` and `session_output_tokens` separately from `total_input_tokens`, `total_output_tokens`, and `lifetime_turns`.
+  * [x] Reset command synchronization: Calling `/new` or `/reset` clears session conversation tokens (`0 in / 0 out`, `0 turns`) while preserving historical lifetime token aggregations across all sessions.
+  * [x] Instant Telemetry broadcasting: `handle_reset` immediately emits idle telemetry with 0 session tokens to ensure `./run.sh monitor` refreshes immediately.
+  * [x] Dual verification test suite: Unit tests in `tests/test_cli_monitor.py` and `tests/test_gemini_hermes.py` validating positive reset behavior, token isolation, and lifetime persistence.
+
 - [x] Total Token Usage & Session Usage in CLI Monitor (`./run.sh monitor`):
   * [x] Session & aggregate token calculations: Implemented `get_total_token_usage()` and `get_session_token_usage()` in `SessionStore` and `MemoryStore` to compute input, output, total tokens, and turn counts per session and across all sessions.
   * [x] Telemetry exporter integration: Updated `TelemetryExporter` and `ExecutionRunner` to capture live session and global token metrics in `telemetry.json` on turn initialization and completion.
@@ -31,7 +37,7 @@
 - *(Historical completed milestones archived in `data/memory/archive/BACKLOG_ARCHIVE.md`)*
 
 ## Operational Notes & Inquiries
-- Production Release `v1.7.0` updated: Live Token & Session Usage telemetry enabled in `./run.sh monitor`.
+- Production Release `v1.7.2` updated: Session Token Reset & Lifetime Tracking on `/new` and `/reset` synchronized with live telemetry and `./run.sh monitor`.
 - Strict 2-world boundary maintained:
   * Standard `./run.sh start`: 100% pure engine execution, static configured model (`config.agy_model`), pure regex/keyword heuristics for `/btw`, zero external SDK or network calls.
   * Accelerated `./run.sh start-jev` / `./run.sh background-jev`: Dynamic model routing (3.6-flash, 3.7-flash, 3.8-flash, 3.1-pro) and dynamic reasoning effort (`low`, `medium`, `high`) with automatic graceful fallback.

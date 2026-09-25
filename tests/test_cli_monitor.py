@@ -63,6 +63,21 @@ class TestCliMonitorAndTelemetry(unittest.TestCase):
             latest_sess = store.get_session_token_usage()
             self.assertIn(latest_sess["chat_id"], [1001, 1002])
 
+            # Reset session for chat 1001: active session tokens reset to 0, global totals remain intact
+            store.reset_session(1001)
+            reset_sess_1001 = store.get_session_token_usage(1001)
+            self.assertEqual(reset_sess_1001["input_tokens"], 0)
+            self.assertEqual(reset_sess_1001["output_tokens"], 0)
+            self.assertEqual(reset_sess_1001["total_tokens"], 0)
+            self.assertEqual(reset_sess_1001["turn_count"], 0)
+
+            # Global lifetime metrics persist
+            total_after_reset = store.get_total_token_usage()
+            self.assertEqual(total_after_reset["total_input_tokens"], 3500)
+            self.assertEqual(total_after_reset["total_output_tokens"], 1200)
+            self.assertEqual(total_after_reset["total_tokens"], 4700)
+            self.assertEqual(total_after_reset["total_turns"], 3)
+
     def test_telemetry_atomic_write_and_read(self):
         """Positive test: TelemetryExporter correctly writes and reads atomic JSON with tokens."""
         with tempfile.TemporaryDirectory() as tmpdir:

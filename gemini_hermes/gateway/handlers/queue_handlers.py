@@ -3,8 +3,11 @@ Queue management and lifecycle command handlers: enqueue, sequential drain, /que
 """
 import asyncio
 import logging
+import os
 from typing import Any, Optional
+from gemini_hermes.config import config
 from gemini_hermes.gateway.models import QueuedTask
+from gemini_hermes.telemetry import TelemetryExporter
 
 logger = logging.getLogger("gemini-hermes.telegram.queue")
 
@@ -137,6 +140,26 @@ async def handle_reset(bot: Any, chat_id: int):
     bot._task_queues.pop(chat_id, None)
     bot._active_task_info.pop(chat_id, None)
     bot.memory_store.reset_session(chat_id)
+
+    # Record idle telemetry state immediately on reset
+    sess_tok = getattr(bot.memory_store, "get_session_token_usage", lambda cid: {})(chat_id)
+    glob_tok = getattr(bot.memory_store, "get_total_token_usage", lambda: {})()
+    TelemetryExporter.record_state(
+        pid=os.getpid(),
+        is_running=bool(bot._active_tasks),
+        active_chat_id=chat_id if bot._active_tasks else None,
+        active_task_preview=None,
+        active_task_elapsed=0.0,
+        active_step="Idle",
+        reasoning_effort=config.reasoning_effort,
+        is_fast_path=False,
+        queue_depth=0,
+        queue_items=[],
+        jev_enabled=getattr(config, "jev_enabled", False),
+        session_tokens=sess_tok,
+        global_tokens=glob_tok,
+    )
+
     await bot.send_message(
         chat_id,
         "🔄 *Conversation reset.* Ongoing background tasks have been stopped, and a fresh session initiated!",

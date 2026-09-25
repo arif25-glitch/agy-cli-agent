@@ -5,6 +5,16 @@ All notable changes to the Gemini-Hermes AI Agent project will be documented in 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.2] - 2026-09-25
+
+### Added
+- **Session Token Reset & Lifetime Tracking on `/new` and `/reset`**:
+  * **Session-Scoped vs Lifetime Metrics (`SessionStore`)**: Separated `session_input_tokens` and `session_output_tokens` from aggregate `total_input_tokens`, `total_output_tokens`, and `lifetime_turns`.
+  * **Reset Command Synchronization (`handle_reset`)**: Resetting conversational state via `/new` or `/reset` now clears the active session token counter (`0 in / 0 out`, `0 turns`) while preserving historical lifetime token aggregations across all sessions.
+  * **Instant Telemetry Broadcasting**: `handle_reset` immediately emits idle telemetry with 0 active session tokens, ensuring `./run.sh monitor` refreshes the dashboard immediately.
+  * **Telegram `/status` Command Enhancement**: Displays both *Session Tokens* and *Lifetime Tokens* breakdown in status output.
+  * **Automated Dual Verification**: Added unit tests in `tests/test_cli_monitor.py` and `tests/test_gemini_hermes.py` validating session token isolation, reset synchronization, and lifetime persistence.
+
 ## [1.7.1] - 2026-09-25
 
 ### Added
