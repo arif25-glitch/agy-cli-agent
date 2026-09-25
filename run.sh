@@ -36,6 +36,28 @@ show_help() {
     echo ""
 }
 
+check_jev_key() {
+    local key="${TYPESAFE_API_KEY:-${JEV_API_KEY:-}}"
+    if [ -z "$key" ] && [ -f "$SCRIPT_DIR/.env" ]; then
+        key=$(grep -E '^(TYPESAFE_API_KEY|JEV_API_KEY)=' "$SCRIPT_DIR/.env" 2>/dev/null | cut -d '=' -f2- | tr -d '"' | tr -d "'" | tr -d ' ' | head -n1 || true)
+    fi
+    if [ -z "$key" ]; then
+        echo "================================================================"
+        echo "❌ Error: Jev AI Accelerated Mode requires a TypeSafe AI / Jev API key."
+        echo "================================================================"
+        echo "To configure your TypeSafe API key:"
+        echo "  1. Get your API key from: https://console.typesafe.ai/keys"
+        echo "  2. Run: ./run.sh config (or add TYPESAFE_API_KEY=... to .env)"
+        echo ""
+        echo "💡 To start Gemini-Hermes in standard mode without Jev AI, run:"
+        echo "  ./run.sh start         (foreground)"
+        echo "  ./run.sh background    (background daemon)"
+        echo "================================================================"
+        return 1
+    fi
+    return 0
+}
+
 case "$1" in
     monitor)
         shift
@@ -64,6 +86,9 @@ case "$1" in
         exec $PYTHON_BIN -m gemini_hermes.cli start
         ;;
     start-jev)
+        if ! check_jev_key; then
+            exit 1
+        fi
         echo "Starting Gemini-Hermes with Jev AI Dynamic Model & Effort Selector..."
         export JEV_ENABLED=true
         export JEV_DYNAMIC_EFFORT=true
@@ -82,6 +107,9 @@ case "$1" in
         echo "View logs with: ./run.sh logs"
         ;;
     background-jev)
+        if ! check_jev_key; then
+            exit 1
+        fi
         if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
             echo "⚠️ Gemini-Hermes is already running (PID: $(cat "$PID_FILE"))"
             exit 0

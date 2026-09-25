@@ -1,5 +1,10 @@
 # Active Task Backlog & Operational Notes
 
+- [x] Jev AI Startup API Key Validation & Guardrail:
+  * [x] Startup guardrail & key demand: Executing `./run.sh start-jev` or `./run.sh background-jev` (or `--jev` CLI flag) demands an active `TYPESAFE_API_KEY` / `JEV_API_KEY`.
+  * [x] Informative user guidance: If the key is missing, clearly guides user on how to obtain/configure it (`./run.sh config` or `.env`) and prompts fallback to the standard pure bot (`./run.sh start` / `./run.sh background`).
+  * [x] Dual verification test suite: Positive and negative tests in `tests/test_jev_startup_validation.py` covering python validation checks and isolated `run.sh` script execution.
+
 - [x] Dynamic / Relative Growth Rotation (Fixes the Rotation Loop):
   * [x] Relative token growth tracking: `SessionStore` tracks `session_baseline_tokens` on Turn 1 and `last_turn_input_tokens`, calculating relative context delta rather than fixed static ceilings.
   * [x] Minimum turn guardrail (`min_turns = 2`): Guarantees new sessions never rotate on single initial turns even when base prompts are large, breaking the single-turn rotation loop.

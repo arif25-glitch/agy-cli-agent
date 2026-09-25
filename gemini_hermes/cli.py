@@ -306,13 +306,44 @@ def release_pid_lock():
         pass
 
 
+def validate_jev_prerequisites() -> bool:
+    """
+    Validates that a valid TypeSafe AI / Jev API key is configured before starting in Jev mode.
+    If missing, prints actionable instructions to the user on how to configure the key,
+    or how to run the standard pure engine with ./run.sh start.
+    """
+    key = (config.typesafe_api_key or "").strip()
+    if not key:
+        print("\n" + "=" * 64)
+        print("❌ Error: Jev AI Accelerated Mode requires a TypeSafe AI / Jev API key.")
+        print("=" * 64)
+        print("To configure your TypeSafe API key:")
+        print("  1. Get an API key from: https://console.typesafe.ai/keys")
+        print("  2. Run: ./run.sh config (or add TYPESAFE_API_KEY=... to .env)")
+        print("\n💡 To start Gemini-Hermes in standard mode without Jev AI, run:")
+        print("  ./run.sh start         (foreground)")
+        print("  ./run.sh background    (background daemon)")
+        print("=" * 64 + "\n")
+        return False
+    return True
+
+
 async def start_bot(jev: bool = False):
     if not config.bot_token:
         print("❌ Error: TELEGRAM_BOT_TOKEN is not set.")
         print("Please run setup first: python3 -m gemini_hermes.cli setup")
         sys.exit(1)
 
-    if jev or os.environ.get("JEV_DYNAMIC_EFFORT", "").lower() in ("true", "1", "yes") or os.environ.get("JEV_DYNAMIC_MODEL", "").lower() in ("true", "1", "yes"):
+    is_jev = (
+        jev
+        or os.environ.get("JEV_DYNAMIC_EFFORT", "").lower() in ("true", "1", "yes")
+        or os.environ.get("JEV_DYNAMIC_MODEL", "").lower() in ("true", "1", "yes")
+        or os.environ.get("JEV_ENABLED", "").lower() in ("true", "1", "yes")
+    )
+
+    if is_jev:
+        if not validate_jev_prerequisites():
+            sys.exit(1)
         config.jev_enabled = True
         config.jev_dynamic_effort = True
         config.jev_dynamic_model = True
